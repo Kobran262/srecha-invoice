@@ -3,9 +3,13 @@ name = "srecha-invoice"
 version = "1.0.0"
 description = "Srecha Invoice Desktop Application"
 authors = ["Srecha Team"]
-license = ""
+license = "MIT"
 repository = ""
 edition = "2021"
+
+[package.metadata.bundle]
+identifier = "com.srecha.invoice"
+icon = ["icons/icon.ico"]
 
 [lib]
 name = "srecha_invoice_lib"
@@ -29,5 +33,3 @@ chrono = { version = "0.4", features = ["serde"] }
 bcrypt = "0.15"
 dirs = "5.0"
 
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-shell = "2"

@@ -27,20 +27,8 @@
       "entitlements": null
     },
     "windows": {
-      "certificateThumbprint": null,
-      "digestAlgorithm": "sha256",
-      "timestampUrl": "",
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
-      },
-      "nsis": {
-        "license": null,
-        "installerIcon": "icons/icon.ico",
-        "headerImage": null,
-        "sidebarImage": null,
-        "installMode": "currentUser",
-        "languages": ["Russian", "English"],
-        "displayLanguageSelector": true
       }
     }
   },

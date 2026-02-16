@@ -47,6 +47,7 @@ pub struct Client {
     pub notes: Option<String>,
     pub contact: Option<String>,
     pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -98,6 +99,8 @@ pub struct Invoice {
     pub status: String,
     pub notes: Option<String>,
     pub created_at: Option<String>,
+    pub paid: Option<bool>,
+    pub delivered: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -198,7 +201,7 @@ pub fn login(username: String, password: String, db: State<Database>) -> Result<
 #[tauri::command]
 pub fn get_clients(db: State<Database>) -> Result<Vec<Client>, String> {
     let mut stmt = db.conn()
-        .prepare("SELECT id, name, legal_name, mb, pib, address, city, postal_code, country, phone, email, tax_id, bank, client_type, abbreviation, municipality, street, house_number, is_manual_address, google_maps, contact_person, contact_person_status, telegram, instagram, installment, installment_term, showcase, bar, notes, contact, created_at FROM clients ORDER BY created_at DESC")
+        .prepare("SELECT id, name, legal_name, mb, pib, address, city, postal_code, country, phone, email, tax_id, bank, client_type, abbreviation, municipality, street, house_number, is_manual_address, google_maps, contact_person, contact_person_status, telegram, instagram, installment, installment_term, showcase, bar, notes, contact, created_at, updated_at FROM clients ORDER BY created_at DESC")
         .map_err(|e| e.to_string())?;
     
     let clients = stmt.query_map([], |row| {
@@ -234,6 +237,7 @@ pub fn get_clients(db: State<Database>) -> Result<Vec<Client>, String> {
             notes: row.get(28)?,
             contact: row.get(29)?,
             created_at: Some(row.get(30)?),
+            updated_at: row.get(31)?,
         })
     })
     .map_err(|e| e.to_string())?
@@ -290,6 +294,7 @@ pub fn create_client(client: Client, db: State<Database>) -> Result<Client, Stri
     Ok(Client {
         id: Some(id),
         created_at: Some(created_at),
+        updated_at: None,
         ..client
     })
 }
@@ -297,9 +302,10 @@ pub fn create_client(client: Client, db: State<Database>) -> Result<Client, Stri
 #[tauri::command]
 pub fn update_client(client: Client, db: State<Database>) -> Result<Client, String> {
     let id = client.id.ok_or("Client ID is required")?;
+    let updated_at = Utc::now().to_rfc3339();
     
     db.conn().execute(
-        "UPDATE clients SET name = ?1, legal_name = ?2, mb = ?3, pib = ?4, address = ?5, city = ?6, postal_code = ?7, country = ?8, phone = ?9, email = ?10, tax_id = ?11, bank = ?12, client_type = ?13, abbreviation = ?14, municipality = ?15, street = ?16, house_number = ?17, is_manual_address = ?18, google_maps = ?19, contact_person = ?20, contact_person_status = ?21, telegram = ?22, instagram = ?23, installment = ?24, installment_term = ?25, showcase = ?26, bar = ?27, notes = ?28, contact = ?29 WHERE id = ?30",
+        "UPDATE clients SET name = ?1, legal_name = ?2, mb = ?3, pib = ?4, address = ?5, city = ?6, postal_code = ?7, country = ?8, phone = ?9, email = ?10, tax_id = ?11, bank = ?12, client_type = ?13, abbreviation = ?14, municipality = ?15, street = ?16, house_number = ?17, is_manual_address = ?18, google_maps = ?19, contact_person = ?20, contact_person_status = ?21, telegram = ?22, instagram = ?23, installment = ?24, installment_term = ?25, showcase = ?26, bar = ?27, notes = ?28, contact = ?29, updated_at = ?30 WHERE id = ?31",
         params![
             client.name,
             client.legal_name,
@@ -330,12 +336,16 @@ pub fn update_client(client: Client, db: State<Database>) -> Result<Client, Stri
             client.bar,
             client.notes,
             client.contact,
+            updated_at,
             id,
         ],
     )
     .map_err(|e| e.to_string())?;
     
-    Ok(client)
+    Ok(Client {
+        updated_at: Some(updated_at),
+        ..client
+    })
 }
 
 #[tauri::command]
@@ -475,9 +485,17 @@ pub fn update_product(id: String, product: Product, db: State<Database>) -> Resu
 
 #[tauri::command]
 pub fn delete_product(id: String, db: State<Database>) -> Result<(), String> {
+    println!("🗑️ delete_product: ПОЛНОЕ УДАЛЕНИЕ товара {}", id);
+    
+    // Полное удаление товара из базы данных (не деактивация!)
     db.conn()
-        .execute("UPDATE products SET is_active = 0 WHERE id = ?1", [id])
-        .map_err(|e| e.to_string())?;
+        .execute("DELETE FROM products WHERE id = ?1", params![id])
+        .map_err(|e| {
+            println!("❌ delete_product: Ошибка: {}", e);
+            e.to_string()
+        })?;
+    
+    println!("✅ delete_product: Товар {} полностью удалён", id);
     Ok(())
 }
 
@@ -488,13 +506,17 @@ pub fn get_invoices(db: State<Database>) -> Result<Vec<Invoice>, String> {
     println!("🔍 get_invoices: Starting to fetch invoices...");
     
     let mut stmt = db.conn()
-        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at FROM invoices ORDER BY created_at DESC")
+        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered FROM invoices ORDER BY created_at DESC")
         .map_err(|e| {
             println!("❌ get_invoices: Failed to prepare statement: {}", e);
             e.to_string()
         })?;
     
     let invoices = stmt.query_map([], |row| {
+        // SQLite хранит INTEGER (0/1), конвертируем в bool
+        let paid_int: Option<i32> = row.get(11).ok();
+        let delivered_int: Option<i32> = row.get(12).ok();
+        
         Ok(Invoice {
             id: Some(row.get(0)?),
             invoice_number: row.get(1)?,
@@ -507,6 +529,8 @@ pub fn get_invoices(db: State<Database>) -> Result<Vec<Invoice>, String> {
             status: row.get(8)?,
             notes: row.get(9)?,
             created_at: Some(row.get(10)?),
+            paid: paid_int.map(|v| v != 0),
+            delivered: delivered_int.map(|v| v != 0),
         })
     })
     .map_err(|e| {
@@ -520,16 +544,26 @@ pub fn get_invoices(db: State<Database>) -> Result<Vec<Invoice>, String> {
     })?;
     
     println!("✅ get_invoices: Successfully fetched {} invoices", invoices.len());
+    
+    // Логируем статусы paid/delivered для диагностики
+    for (idx, inv) in invoices.iter().take(5).enumerate() {
+        println!("   [{}] {}: paid={:?}, delivered={:?}", 
+            idx, inv.invoice_number, inv.paid, inv.delivered);
+    }
+    
     Ok(invoices)
 }
 
 #[tauri::command]
 pub fn get_invoice_by_id(id: String, db: State<Database>) -> Result<Option<InvoiceWithItems>, String> {
     let mut stmt = db.conn()
-        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at FROM invoices WHERE id = ?1")
+        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered FROM invoices WHERE id = ?1")
         .map_err(|e| e.to_string())?;
     
     let invoice_result = stmt.query_row([&id], |row| {
+        let paid_int: Option<i32> = row.get(11).ok();
+        let delivered_int: Option<i32> = row.get(12).ok();
+        
         Ok(Invoice {
             id: Some(row.get(0)?),
             invoice_number: row.get(1)?,
@@ -542,6 +576,8 @@ pub fn get_invoice_by_id(id: String, db: State<Database>) -> Result<Option<Invoi
             status: row.get(8)?,
             notes: row.get(9)?,
             created_at: Some(row.get(10)?),
+            paid: paid_int.map(|v| v != 0),
+            delivered: delivered_int.map(|v| v != 0),
         })
     });
     
@@ -579,8 +615,8 @@ pub fn create_invoice(invoice: Invoice, items: Vec<InvoiceItem>, db: State<Datab
     let created_at = Utc::now().to_rfc3339();
     
     db.conn().execute(
-        "INSERT INTO invoices (id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO invoices (id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             id,
             invoice.invoice_number,
@@ -593,6 +629,8 @@ pub fn create_invoice(invoice: Invoice, items: Vec<InvoiceItem>, db: State<Datab
             invoice.status,
             invoice.notes,
             created_at,
+            invoice.paid.unwrap_or(false),
+            invoice.delivered.unwrap_or(false),
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -631,7 +669,7 @@ pub fn update_invoice(id: String, invoice: Invoice, db: State<Database>) -> Resu
     println!("🔄 update_invoice: Updating invoice {}", id);
     
     db.conn().execute(
-        "UPDATE invoices SET invoice_number = ?1, document_type = ?2, client_id = ?3, client_name = ?4, date = ?5, due_date = ?6, total = ?7, status = ?8, notes = ?9 WHERE id = ?10",
+        "UPDATE invoices SET invoice_number = ?1, document_type = ?2, client_id = ?3, client_name = ?4, date = ?5, due_date = ?6, total = ?7, status = ?8, notes = ?9, paid = ?10, delivered = ?11 WHERE id = ?12",
         params![
             invoice.invoice_number,
             invoice.document_type,
@@ -642,6 +680,8 @@ pub fn update_invoice(id: String, invoice: Invoice, db: State<Database>) -> Resu
             invoice.total,
             invoice.status,
             invoice.notes,
+            invoice.paid.unwrap_or(false),
+            invoice.delivered.unwrap_or(false),
             id,
         ],
     )
@@ -663,6 +703,8 @@ pub fn update_invoice(id: String, invoice: Invoice, db: State<Database>) -> Resu
         status: invoice.status,
         notes: invoice.notes,
         created_at: invoice.created_at,
+        paid: invoice.paid,
+        delivered: invoice.delivered,
     })
 }
 
@@ -693,10 +735,13 @@ pub fn delete_invoice(id: String, db: State<Database>) -> Result<(), String> {
 #[tauri::command]
 pub fn get_client_history(client_id: String, db: State<Database>) -> Result<Vec<Invoice>, String> {
     let mut stmt = db.conn()
-        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at FROM invoices WHERE client_id = ?1 ORDER BY created_at DESC")
+        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered FROM invoices WHERE client_id = ?1 ORDER BY created_at DESC")
         .map_err(|e| e.to_string())?;
     
     let invoices = stmt.query_map([&client_id], |row| {
+        let paid_int: Option<i32> = row.get(11).ok();
+        let delivered_int: Option<i32> = row.get(12).ok();
+        
         Ok(Invoice {
             id: Some(row.get(0)?),
             invoice_number: row.get(1)?,
@@ -709,6 +754,8 @@ pub fn get_client_history(client_id: String, db: State<Database>) -> Result<Vec<
             status: row.get(8)?,
             notes: row.get(9)?,
             created_at: Some(row.get(10)?),
+            paid: paid_int.map(|v| v != 0),
+            delivered: delivered_int.map(|v| v != 0),
         })
     })
     .map_err(|e| e.to_string())?
@@ -716,6 +763,35 @@ pub fn get_client_history(client_id: String, db: State<Database>) -> Result<Vec<
     .map_err(|e| e.to_string())?;
     
     Ok(invoices)
+}
+
+#[tauri::command]
+pub fn update_invoice_payment_status(invoice_number: String, paid: bool, delivered: bool, db: State<Database>) -> Result<(), String> {
+    println!("═══════════════════════════════════════════════════════════");
+    println!("🔄 update_invoice_payment_status ВЫЗВАН:");
+    println!("   invoice_number: {}", invoice_number);
+    println!("   paid: {}", paid);
+    println!("   delivered: {}", delivered);
+    
+    let rows_affected = db.conn().execute(
+        "UPDATE invoices SET paid = ?1, delivered = ?2 WHERE invoice_number = ?3",
+        params![paid as i32, delivered as i32, invoice_number],
+    )
+    .map_err(|e| {
+        println!("❌ update_invoice_payment_status: Failed: {}", e);
+        e.to_string()
+    })?;
+    
+    println!("   rows_affected: {}", rows_affected);
+    
+    if rows_affected == 0 {
+        println!("⚠️ ВНИМАНИЕ: Ни одна запись не обновлена! Инвойс {} не найден в базе.", invoice_number);
+    } else {
+        println!("✅ update_invoice_payment_status: Успешно обновлено {} записей", rows_affected);
+    }
+    println!("═══════════════════════════════════════════════════════════");
+    
+    Ok(())
 }
 
 // ==================== КОМАНДЫ: ДОСТАВКИ ====================
@@ -1458,4 +1534,76 @@ pub fn delete_supplier(id: i64, db: State<Database>) -> Result<(), String> {
         .execute("UPDATE suppliers SET is_active = 0 WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ==================== HTTP ЗАПРОСЫ ДЛЯ СИНХРОНИЗАЦИИ ====================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HttpResponse {
+    pub status: u16,
+    pub body: String,
+    pub ok: bool,
+}
+
+#[tauri::command]
+pub async fn http_request(
+    url: String,
+    method: String,
+    headers: std::collections::HashMap<String, String>,
+    body: Option<String>,
+) -> Result<HttpResponse, String> {
+    // Создаем клиент с настройками таймаута и принятием всех сертификатов
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .danger_accept_invalid_certs(true) // Для отладки
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    
+    let mut request = match method.to_uppercase().as_str() {
+        "GET" => client.get(&url),
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "DELETE" => client.delete(&url),
+        "PATCH" => client.patch(&url),
+        _ => return Err(format!("Unsupported HTTP method: {}", method)),
+    };
+    
+    // Добавляем заголовки
+    for (key, value) in headers {
+        request = request.header(&key, &value);
+    }
+    
+    // Добавляем тело запроса если есть
+    if let Some(body_content) = body {
+        request = request.body(body_content);
+    }
+    
+    // Выполняем запрос с детальной обработкой ошибок
+    let response = match request.send().await {
+        Ok(resp) => resp,
+        Err(e) => {
+            // Детальная диагностика ошибки
+            let error_detail = if e.is_connect() {
+                format!("Connection error: {} (check if server is reachable)", e)
+            } else if e.is_timeout() {
+                format!("Timeout error: {} (server took too long to respond)", e)
+            } else if e.is_request() {
+                format!("Request error: {} (invalid request)", e)
+            } else if e.is_redirect() {
+                format!("Redirect error: {}", e)
+            } else {
+                format!("Unknown error: {:?}", e)
+            };
+            return Err(error_detail);
+        }
+    };
+    
+    let status = response.status().as_u16();
+    let ok = response.status().is_success();
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
+    
+    Ok(HttpResponse { status, body, ok })
 }

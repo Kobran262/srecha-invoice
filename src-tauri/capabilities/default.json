@@ -13,6 +13,16 @@
         { "url": "tel:*" },
         { "url": "mailto:*" }
       ]
+    },
+    {
+      "identifier": "http:default"
+    },
+    {
+      "identifier": "http:allow-fetch",
+      "allow": [
+        { "url": "https://*.sqlite.cloud:*/*" },
+        { "url": "https://*.sqlite.cloud/*" }
+      ]
     }
   ]
 }

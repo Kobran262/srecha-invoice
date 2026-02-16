@@ -51,7 +51,7 @@ impl Database {
             [],
         )?;
         
-        // 2. Таблица клиентов (24 поля)
+        // 2. Таблица клиентов (24 поля + updated_at для синхронизации)
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS clients (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,10 +82,17 @@ impl Database {
                 bar INTEGER DEFAULT 0,
                 notes TEXT,
                 contact TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                updated_at TEXT
             )",
             [],
         )?;
+        
+        // Миграция: добавляем колонку updated_at в clients если её нет
+        let _ = self.conn.execute(
+            "ALTER TABLE clients ADD COLUMN updated_at TEXT",
+            [],
+        );
         
         // 3. Таблица товаров
         self.conn.execute(
@@ -124,10 +131,16 @@ impl Database {
                 total REAL NOT NULL,
                 status TEXT NOT NULL,
                 notes TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                paid INTEGER DEFAULT 0,
+                delivered INTEGER DEFAULT 0
             )",
             [],
         )?;
+        
+        // Миграция: добавляем колонки paid и delivered если их нет
+        let _ = self.conn.execute("ALTER TABLE invoices ADD COLUMN paid INTEGER DEFAULT 0", []);
+        let _ = self.conn.execute("ALTER TABLE invoices ADD COLUMN delivered INTEGER DEFAULT 0", []);
         
         // 5. Таблица позиций инвойса
         self.conn.execute(

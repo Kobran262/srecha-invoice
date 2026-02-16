@@ -53,7 +53,9 @@ window.api = {
         update: async (id, data) => {
             try {
                 console.log('📡 Обновляем клиента в ЛОКАЛЬНОЙ базе:', id);
-                const client = await invoke('update_client', { id, client: data });
+                // Конвертируем id в строку (Tauri ожидает строку)
+                const idStr = String(id);
+                const client = await invoke('update_client', { id: idStr, client: data });
                 console.log('✅ Клиент обновлен');
                 return client;
             } catch (error) {
@@ -65,7 +67,11 @@ window.api = {
         delete: async (id) => {
             try {
                 console.log('📡 Удаляем клиента из ЛОКАЛЬНОЙ базы:', id);
-                await invoke('delete_client', { id });
+                const idNum = parseInt(id, 10);
+                if (isNaN(idNum)) {
+                    throw new Error(`Некорректный ID клиента: ${id}`);
+                }
+                await invoke('delete_client', { id: idNum });
                 console.log('✅ Клиент удален');
             } catch (error) {
                 console.error('❌ Ошибка удаления клиента:', error);
@@ -122,7 +128,9 @@ window.api = {
         update: async (id, data) => {
             try {
                 console.log('📡 Обновляем товар в ЛОКАЛЬНОЙ базе:', id);
-                const product = await invoke('update_product', { id, product: data });
+                // Конвертируем id в строку (Tauri ожидает строку)
+                const idStr = String(id);
+                const product = await invoke('update_product', { id: idStr, product: data });
                 console.log('✅ Товар обновлен');
                 return product;
             } catch (error) {
@@ -134,7 +142,8 @@ window.api = {
         delete: async (id) => {
             try {
                 console.log('📡 Удаляем товар из ЛОКАЛЬНОЙ базы:', id);
-                await invoke('delete_product', { id });
+                const idStr = String(id);
+                await invoke('delete_product', { id: idStr });
                 console.log('✅ Товар удален');
             } catch (error) {
                 console.error('❌ Ошибка удаления товара:', error);
@@ -165,9 +174,18 @@ window.api = {
     invoices: {
         getAll: async () => {
             try {
-                console.log('📡 Загружаем инвойсы из ЛОКАЛЬНОЙ базы...');
+                console.log('📡 Загружаем инвойсы из ЛОКАЛЬНОЙ SQLite базы...');
                 const invoices = await invoke('get_invoices');
                 console.log(`✅ Загружено инвойсов: ${invoices.length}`);
+                
+                // Логируем статусы paid/delivered для диагностики
+                if (invoices.length > 0) {
+                    console.log('📊 СТАТУСЫ ИНВОЙСОВ ИЗ ЛОКАЛЬНОЙ БАЗЫ:');
+                    invoices.slice(0, 5).forEach((inv, idx) => {
+                        console.log(`   [${idx}] ${inv.invoiceNumber}: paid=${inv.paid}, delivered=${inv.delivered}`);
+                    });
+                }
+                
                 return invoices;
             } catch (error) {
                 console.error('❌ Ошибка получения инвойсов:', error);
@@ -213,10 +231,27 @@ window.api = {
             }
         },
         
+        updatePaymentStatus: async (invoiceNumber, paid, delivered) => {
+            try {
+                console.log('📡 Обновляем статус оплаты/доставки:', invoiceNumber, 'paid=', paid, 'delivered=', delivered);
+                await invoke('update_invoice_payment_status', { 
+                    invoiceNumber: String(invoiceNumber), 
+                    paid: Boolean(paid), 
+                    delivered: Boolean(delivered) 
+                });
+                console.log('✅ Статус оплаты/доставки обновлен');
+                return true;
+            } catch (error) {
+                console.error('❌ Ошибка обновления статуса оплаты/доставки:', error);
+                throw new Error(`Не удалось обновить статус: ${error}`);
+            }
+        },
+        
         update: async (id, invoice) => {
             try {
                 console.log('📡 Обновляем инвойс:', id);
-                const updated = await invoke('update_invoice', { id, invoice });
+                const idStr = String(id);
+                const updated = await invoke('update_invoice', { id: idStr, invoice });
                 console.log('✅ Инвойс обновлен');
                 return updated;
             } catch (error) {
@@ -228,7 +263,8 @@ window.api = {
         delete: async (id) => {
             try {
                 console.log('📡 Удаляем инвойс:', id);
-                await invoke('delete_invoice', { id });
+                const idStr = String(id);
+                await invoke('delete_invoice', { id: idStr });
                 console.log('✅ Инвойс удален');
                 return true;
             } catch (error) {
@@ -279,7 +315,8 @@ window.api = {
         update: async (id, data) => {
             try {
                 console.log('📡 Обновляем группу склада:', id);
-                await invoke('update_warehouse_group', { id, group: data });
+                const idStr = String(id);
+                await invoke('update_warehouse_group', { id: idStr, group: data });
                 console.log('✅ Группа обновлена');
                 return true;
             } catch (error) {
@@ -291,7 +328,8 @@ window.api = {
         delete: async (id) => {
             try {
                 console.log('📡 Удаляем группу склада:', id);
-                await invoke('delete_warehouse_group', { id });
+                const idStr = String(id);
+                await invoke('delete_warehouse_group', { id: idStr });
                 console.log('✅ Группа удалена');
                 return true;
             } catch (error) {
@@ -303,7 +341,9 @@ window.api = {
         deleteItem: async (groupId, productId) => {
             try {
                 console.log('📡 Удаляем товар из группы:', groupId, productId);
-                await invoke('delete_warehouse_group_item', { groupId, productId });
+                const gIdStr = String(groupId);
+                const pIdStr = String(productId);
+                await invoke('delete_warehouse_group_item', { groupId: gIdStr, productId: pIdStr });
                 console.log('✅ Товар удален из группы');
                 return true;
             } catch (error) {
@@ -342,7 +382,8 @@ window.api = {
         delete: async (id) => {
             try {
                 console.log('📡 Удаляем категорию:', id);
-                await invoke('delete_category', { id });
+                const idStr = String(id);
+                await invoke('delete_category', { id: idStr });
                 console.log('✅ Категория удалена');
             } catch (error) {
                 console.error('❌ Ошибка удаления категории:', error);
@@ -392,7 +433,8 @@ window.api = {
         delete: async (id) => {
             try {
                 console.log('📡 Удаляем субкатегорию:', id);
-                await invoke('delete_subcategory', { id });
+                const idStr = String(id);
+                await invoke('delete_subcategory', { id: idStr });
                 console.log('✅ Субкатегория удалена');
             } catch (error) {
                 console.error('❌ Ошибка удаления субкатегории:', error);
@@ -445,7 +487,8 @@ window.api = {
         delete: async (id) => {
             try {
                 console.log('📡 Удаляем сектор:', id);
-                await invoke('delete_supplier_sector', { id });
+                const idStr = String(id);
+                await invoke('delete_supplier_sector', { id: idStr });
                 console.log('✅ Сектор удален');
             } catch (error) {
                 console.error('❌ Ошибка удаления сектора:', error);
@@ -495,7 +538,8 @@ window.api = {
         delete: async (id) => {
             try {
                 console.log('📡 Удаляем продукцию:', id);
-                await invoke('delete_supplier_product', { id });
+                const idStr = String(id);
+                await invoke('delete_supplier_product', { id: idStr });
                 console.log('✅ Продукция удалена');
             } catch (error) {
                 console.error('❌ Ошибка удаления продукции:', error);
@@ -533,7 +577,8 @@ window.api = {
         update: async (id, data) => {
             try {
                 console.log('📡 Обновляем поставщика:', id);
-                const supplier = await invoke('update_supplier', { id, supplier: data });
+                const idStr = String(id);
+                const supplier = await invoke('update_supplier', { id: idStr, supplier: data });
                 console.log('✅ Поставщик обновлен');
                 return supplier;
             } catch (error) {
@@ -545,7 +590,8 @@ window.api = {
         delete: async (id) => {
             try {
                 console.log('📡 Удаляем поставщика:', id);
-                await invoke('delete_supplier', { id });
+                const idStr = String(id);
+                await invoke('delete_supplier', { id: idStr });
                 console.log('✅ Поставщик удален');
             } catch (error) {
                 console.error('❌ Ошибка удаления поставщика:', error);

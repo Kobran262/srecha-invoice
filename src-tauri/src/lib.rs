@@ -8,6 +8,7 @@ use database::Database;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_http::init())
         .setup(|app| {
             // Инициализация базы данных
             let app_handle = app.handle().clone();
@@ -86,6 +87,7 @@ pub fn run() {
             commands::create_invoice,
             commands::update_invoice_status,
             commands::update_invoice,
+            commands::update_invoice_payment_status,
             commands::delete_invoice,
             commands::get_client_history,
             commands::get_deliveries,
@@ -119,6 +121,8 @@ pub fn run() {
             commands::create_supplier,
             commands::update_supplier,
             commands::delete_supplier,
+            // HTTP для синхронизации
+            commands::http_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

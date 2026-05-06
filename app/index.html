@@ -7076,73 +7076,11 @@
                 });
                 console.log('═══════════════════════════════════════════════════════════');
                 
-                // Загружаем статусы из localStorage как FALLBACK (если в API нет данных)
-                const savedPredracunsLocal = localStorage.getItem('confirmedPredracuns');
-                const savedRacunsLocal = localStorage.getItem('confirmedRacuns');
-                const savedInvoicesLocal = localStorage.getItem('confirmedInvoices');
-                
-                let localStatuses = {};
-                
-                // Собираем все локальные статусы по номеру документа
-                if (savedPredracunsLocal) {
-                    try {
-                        JSON.parse(savedPredracunsLocal).forEach(doc => {
-                            if (doc.number || doc.invoiceNumber) {
-                                const key = doc.number || doc.invoiceNumber;
-                                localStatuses[key] = { paid: doc.paid, delivered: doc.delivered };
-                            }
-                        });
-                    } catch(e) {}
-                }
-                if (savedRacunsLocal) {
-                    try {
-                        JSON.parse(savedRacunsLocal).forEach(doc => {
-                            if (doc.number || doc.invoiceNumber) {
-                                const key = doc.number || doc.invoiceNumber;
-                                localStatuses[key] = { paid: doc.paid, delivered: doc.delivered };
-                            }
-                        });
-                    } catch(e) {}
-                }
-                if (savedInvoicesLocal) {
-                    try {
-                        JSON.parse(savedInvoicesLocal).forEach(doc => {
-                            if (doc.number || doc.invoiceNumber) {
-                                const key = doc.number || doc.invoiceNumber;
-                                if (!localStatuses[key]) {
-                                    localStatuses[key] = { paid: doc.paid, delivered: doc.delivered };
-                                }
-                            }
-                        });
-                    } catch(e) {}
-                }
-                
-                console.log('📋 Загруженные локальные статусы из localStorage:', Object.keys(localStatuses).length);
-                
-                // ЛОГИКА ПРИОРИТЕТА: API > localStorage
-                // Используем статусы из API если они есть, иначе из localStorage
+                // ВАЖНО: Статусы paid/delivered должны храниться на устройстве (SQLite через backend),
+                // а не в localStorage. Поэтому не делаем fallback/мердж из localStorage.
                 allInvoices.forEach(inv => {
                     const key = inv.number || inv.invoiceNumber;
-                    
-                    // Если из API пришли статусы (не null/undefined), используем их
-                    // Иначе проверяем localStorage
-                    if (inv.paid === null || inv.paid === undefined) {
-                        if (key && localStatuses[key] && localStatuses[key].paid !== undefined) {
-                            inv.paid = localStatuses[key].paid;
-                            console.log(`   📥 ${key}: paid восстановлен из localStorage = ${inv.paid}`);
-                        }
-                    } else {
-                        console.log(`   ✅ ${key}: paid из API = ${inv.paid}`);
-                    }
-                    
-                    if (inv.delivered === null || inv.delivered === undefined) {
-                        if (key && localStatuses[key] && localStatuses[key].delivered !== undefined) {
-                            inv.delivered = localStatuses[key].delivered;
-                            console.log(`   📥 ${key}: delivered восстановлен из localStorage = ${inv.delivered}`);
-                        }
-                    } else {
-                        console.log(`   ✅ ${key}: delivered из API = ${inv.delivered}`);
-                    }
+                    console.log(`   ✅ ${key}: paid=${inv.paid}, delivered=${inv.delivered} (из API/SQLite)`);
                 });
                 
                 // ФИЛЬТРАЦИЯ: убираем инвойсы удалённых клиентов
@@ -7210,9 +7148,9 @@
                 window.uniqueInvoicesCount = uniqueInvoiceNumbers.size;
                 
                 // Сохраняем в localStorage для fallback и для истории (включая восстановленные статусы)
-                localStorage.setItem('confirmedInvoices', JSON.stringify(confirmedInvoices));
-                localStorage.setItem('confirmedPredracuns', JSON.stringify(confirmedPredracuns));
-                localStorage.setItem('confirmedRacuns', JSON.stringify(confirmedRacuns));
+                safeLocalStorage('set', 'confirmedInvoices', confirmedInvoices);
+                safeLocalStorage('set', 'confirmedPredracuns', confirmedPredracuns);
+                safeLocalStorage('set', 'confirmedRacuns', confirmedRacuns);
                 console.log('💾 Saved invoices to localStorage (с сохранёнными статусами)');
                 
                 return true;
@@ -7968,6 +7906,27 @@
                         const item = localStorage.getItem(key);
                         return item ? JSON.parse(item) : null;
                     case 'set':
+                        // ВАЖНО (v20260424_019): статусы paid/delivered должны храниться на устройстве
+                        // через backend (SQLite), а не в localStorage (он может сбрасываться между сессиями).
+                        // Поэтому при сохранении списков документов в localStorage вырезаем paid/delivered.
+                        if (key === 'confirmedInvoices' || key === 'confirmedPredracuns' || key === 'confirmedRacuns') {
+                            if (Array.isArray(data)) {
+                                data = data.map(d => {
+                                    if (!d || typeof d !== 'object') return d;
+                                    const copy = { ...d };
+                                    delete copy.paid;
+                                    delete copy.delivered;
+                                    if (copy._statusModifiedAt && typeof copy._statusModifiedAt === 'object') {
+                                        const sma = { ...copy._statusModifiedAt };
+                                        delete sma.paid;
+                                        delete sma.delivered;
+                                        copy._statusModifiedAt = sma;
+                                    }
+                                    return copy;
+                                });
+                            }
+                        }
+
                         localStorage.setItem(key, JSON.stringify(data));
                         return true;
                     case 'remove':
@@ -7989,6 +7948,23 @@
                         localStorage.removeItem('actionLogs');
                         // Пытаемся снова
                         if (operation === 'set') {
+                            if (key === 'confirmedInvoices' || key === 'confirmedPredracuns' || key === 'confirmedRacuns') {
+                                if (Array.isArray(data)) {
+                                    data = data.map(d => {
+                                        if (!d || typeof d !== 'object') return d;
+                                        const copy = { ...d };
+                                        delete copy.paid;
+                                        delete copy.delivered;
+                                        if (copy._statusModifiedAt && typeof copy._statusModifiedAt === 'object') {
+                                            const sma = { ...copy._statusModifiedAt };
+                                            delete sma.paid;
+                                            delete sma.delivered;
+                                            copy._statusModifiedAt = sma;
+                                        }
+                                        return copy;
+                                    });
+                                }
+                            }
                             localStorage.setItem(key, JSON.stringify(data));
                             return true;
                         }
@@ -14137,9 +14113,9 @@
                 }
                 
                 // Сохраняем в localStorage
-                localStorage.setItem('confirmedInvoices', JSON.stringify(confirmedInvoices));
-                localStorage.setItem('confirmedPredracuns', JSON.stringify(confirmedPredracuns));
-                localStorage.setItem('confirmedRacuns', JSON.stringify(confirmedRacuns));
+                safeLocalStorage('set', 'confirmedInvoices', confirmedInvoices);
+                safeLocalStorage('set', 'confirmedPredracuns', confirmedPredracuns);
+                safeLocalStorage('set', 'confirmedRacuns', confirmedRacuns);
                 localStorage.setItem('confirmedDeliveries', JSON.stringify(confirmedDeliveries));
                 console.log('💾 Сохранено в localStorage');
                 
@@ -14177,9 +14153,9 @@
                     if (index !== -1) confirmedDeliveries.splice(index, 1);
                 }
                 
-                localStorage.setItem('confirmedInvoices', JSON.stringify(confirmedInvoices));
-                localStorage.setItem('confirmedPredracuns', JSON.stringify(confirmedPredracuns));
-                localStorage.setItem('confirmedRacuns', JSON.stringify(confirmedRacuns));
+                safeLocalStorage('set', 'confirmedInvoices', confirmedInvoices);
+                safeLocalStorage('set', 'confirmedPredracuns', confirmedPredracuns);
+                safeLocalStorage('set', 'confirmedRacuns', confirmedRacuns);
                 localStorage.setItem('confirmedDeliveries', JSON.stringify(confirmedDeliveries));
                 
                 // Обновляем глобальные переменные
@@ -18299,7 +18275,7 @@
             container.innerHTML = listHTML;
         }
 
-        function toggleInvoiceStatus(invoiceNumber, statusType, isChecked) {
+        async function toggleInvoiceStatus(invoiceNumber, statusType, isChecked) {
             const invoice = confirmedInvoices.find(inv => inv.number === invoiceNumber);
             if (invoice) {
                 if (statusType === 'delivered') {
@@ -18309,9 +18285,15 @@
                     invoice.paid = isChecked;
                     addLog(`Инвойс #${invoiceNumber} отмечен как ${isChecked ? 'оплаченный' : 'неоплаченный'}`);
                 }
-                
-                // Сохраняем обновленные данные в localStorage
-                safeLocalStorage('set', 'confirmedInvoices', confirmedInvoices);
+                // Сохраняем статус на устройстве через backend (SQLite), а не localStorage
+                try {
+                    const paid = Boolean(invoice.paid);
+                    const delivered = Boolean(invoice.delivered);
+                    await InvoicesAPI.updatePaymentStatus(invoiceNumber, paid, delivered);
+                } catch (error) {
+                    console.error('❌ Ошибка сохранения статуса в локальную базу:', error);
+                    showAlert('Не удалось сохранить статус в базе данных. Проверьте логи.', 'danger');
+                }
                 
                 // Обновляем отображение для изменения цвета текста
                 updateStatistics();
@@ -23399,9 +23381,9 @@
                             confirmedRacuns = confirmedRacuns.filter(inv => inv.client?.mb !== obj.mb);
                             confirmedInvoices = confirmedInvoices.filter(inv => inv.client?.mb !== obj.mb);
                             
-                            localStorage.setItem('confirmedPredracuns', JSON.stringify(confirmedPredracuns));
-                            localStorage.setItem('confirmedRacuns', JSON.stringify(confirmedRacuns));
-                            localStorage.setItem('confirmedInvoices', JSON.stringify(confirmedInvoices));
+                            safeLocalStorage('set', 'confirmedPredracuns', confirmedPredracuns);
+                            safeLocalStorage('set', 'confirmedRacuns', confirmedRacuns);
+                            safeLocalStorage('set', 'confirmedInvoices', confirmedInvoices);
                             
                             console.log(`   Удалено предрачунов: ${beforeP - confirmedPredracuns.length}`);
                             console.log(`   Удалено рачунов: ${beforeR - confirmedRacuns.length}`);
@@ -23863,12 +23845,7 @@
                     );
                     console.log('   📜 Записано в историю для синхронизации');
                 
-                // Сохраняем в localStorage
-                const storageKey = docType === 'predracun' ? 'confirmedPredracuns' : 'confirmedRacuns';
-                localStorage.setItem(storageKey, JSON.stringify(docArray));
-                console.log('   ✅ Сохранено в localStorage:', storageKey);
-                
-                    // Также сохраняем в общий массив confirmedInvoices
+                    // Также обновляем в общем массиве confirmedInvoices (в памяти)
                     const invoiceInGeneral = confirmedInvoices.find(inv => inv.number === docNumber && inv.documentType === docType);
                     if (invoiceInGeneral) {
                         invoiceInGeneral[statusType] = newValue;
@@ -23876,8 +23853,7 @@
                         invoiceInGeneral._syncVersion = doc._syncVersion;
                         if (!invoiceInGeneral._statusModifiedAt) invoiceInGeneral._statusModifiedAt = {};
                         invoiceInGeneral._statusModifiedAt[statusType] = changeTime;
-                        localStorage.setItem('confirmedInvoices', JSON.stringify(confirmedInvoices));
-                        console.log('   ✅ Сохранено в confirmedInvoices с версией', doc._syncVersion);
+                        console.log('   ✅ Обновлено в confirmedInvoices (в памяти) с версией', doc._syncVersion);
                     }
                     
                     // Сохраняем в локальную SQLite базу данных через специальную команду
@@ -23895,7 +23871,7 @@
                         console.log(`   ✅ Статус сохранен в ЛОКАЛЬНУЮ базу данных для ${docName} #${docNumber}`);
                     } catch (error) {
                         console.error('   ❌ Ошибка сохранения статуса в локальную базу:', error);
-                        // Не показываем предупреждение - данные сохранены в localStorage
+                        showAlert('Не удалось сохранить статус в базе данных. Проверьте логи.', 'danger');
                     }
                     
                     // Разный лог в зависимости от действия

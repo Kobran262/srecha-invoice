@@ -766,26 +766,117 @@ pub fn get_client_history(client_id: String, db: State<Database>) -> Result<Vec<
 }
 
 #[tauri::command]
-pub fn update_invoice_payment_status(invoice_number: String, paid: bool, delivered: bool, db: State<Database>) -> Result<(), String> {
+/// Номер в UI (`number`) часто без префикса, а в SQLite `invoices.invoice_number` иногда хранится с префиксом.
+/// Предрачун/отпремница могут иметь префиксы, поэтому пробуем несколько кандидатов.
+fn invoice_number_db_candidates(raw: &str, document_type: Option<&str>) -> Vec<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return vec![];
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |s: String| {
+        if !s.is_empty() && !out.contains(&s) {
+            out.push(s);
+        }
+    };
+
+    match document_type {
+        Some("predracun") => {
+            if raw.starts_with('p') {
+                push(raw.to_string());
+            } else {
+                push(format!("p{}", raw));
+            }
+            push(raw.to_string());
+        }
+        Some("delivery") => {
+            if raw.starts_with('o') {
+                push(raw.to_string());
+            } else {
+                push(format!("o{}", raw));
+            }
+            push(raw.to_string());
+        }
+        Some("racun") => {
+            let no_prefix = raw.trim_start_matches('p').trim_start_matches('o');
+            push(no_prefix.to_string());
+            push(raw.to_string());
+        }
+        _ => {
+            push(raw.to_string());
+            if !raw.starts_with('p') {
+                push(format!("p{}", raw));
+            }
+            if !raw.starts_with('o') {
+                push(format!("o{}", raw));
+            }
+            let stripped = raw.trim_start_matches('p').trim_start_matches('o');
+            if stripped != raw {
+                push(stripped.to_string());
+            }
+        }
+    }
+
+    out
+}
+
+#[tauri::command]
+pub fn update_invoice_payment_status(
+    // JS может прислать как invoiceNumber, так и invoice_number (в зависимости от адаптера)
+    #[allow(non_snake_case)]
+    invoiceNumber: Option<String>,
+    invoice_number: Option<String>,
+    paid: bool,
+    delivered: bool,
+    document_type: Option<String>,
+    db: State<Database>,
+) -> Result<(), String> {
     println!("═══════════════════════════════════════════════════════════");
     println!("🔄 update_invoice_payment_status ВЫЗВАН:");
+    let invoice_number = invoice_number
+        .or(invoiceNumber)
+        .unwrap_or_default();
     println!("   invoice_number: {}", invoice_number);
     println!("   paid: {}", paid);
     println!("   delivered: {}", delivered);
+    println!("   document_type: {:?}", document_type);
     
-    let rows_affected = db.conn().execute(
-        "UPDATE invoices SET paid = ?1, delivered = ?2 WHERE invoice_number = ?3",
-        params![paid as i32, delivered as i32, invoice_number],
-    )
-    .map_err(|e| {
-        println!("❌ update_invoice_payment_status: Failed: {}", e);
-        e.to_string()
-    })?;
+    let candidates = invoice_number_db_candidates(&invoice_number, document_type.as_deref());
+    if candidates.is_empty() {
+        return Err("invoice_number is empty".to_string());
+    }
+
+    let mut rows_affected: usize = 0;
+    let mut matched: Option<String> = None;
+    for cand in &candidates {
+        let n = db
+            .conn()
+            .execute(
+                "UPDATE invoices SET paid = ?1, delivered = ?2 WHERE invoice_number = ?3",
+                params![paid as i32, delivered as i32, cand],
+            )
+            .map_err(|e| {
+                println!("❌ update_invoice_payment_status: Failed: {}", e);
+                e.to_string()
+            })?;
+        if n > 0 {
+            rows_affected = n;
+            matched = Some(cand.clone());
+            break;
+        }
+    }
     
+    println!("   tried_candidates: {:?}", candidates);
     println!("   rows_affected: {}", rows_affected);
+    if let Some(m) = &matched {
+        println!("   matched_invoice_number: {}", m);
+    }
     
     if rows_affected == 0 {
-        println!("⚠️ ВНИМАНИЕ: Ни одна запись не обновлена! Инвойс {} не найден в базе.", invoice_number);
+        println!(
+            "⚠️ ВНИМАНИЕ: Ни одна запись не обновлена! Инвойс {:?} (тип {:?}) не найден в базе по номерам {:?}.",
+            invoice_number, document_type, candidates
+        );
     } else {
         println!("✅ update_invoice_payment_status: Успешно обновлено {} записей", rows_affected);
     }

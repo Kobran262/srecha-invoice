@@ -3086,6 +3086,9 @@
             <div style="text-align: center;">
                 <button class="btn btn-primary" onclick="generateInvoice()">Сгенерировать предрачун</button>
                 <button class="btn btn-primary" onclick="generateRacun('button')">Создать рачун</button>
+                <button class="btn btn-warning" id="sendToEfakturaBtn" onclick="sendCurrentRacunToEfaktura()" disabled title="Сначала создайте рачун">
+                    Отправить в eFaktura
+                </button>
                 <button class="btn btn-success" id="confirmInvoiceBtn">Утвердить предрачун</button>
                 <button class="btn btn-secondary" onclick="generateDeliveryFromInvoice()">Создать отпремницу</button>
             </div>
@@ -3093,6 +3096,25 @@
             <div id="invoicePreview" class="preview" style="display: none;">
                 <h3>Предпросмотр инвойса</h3>
                 <div id="invoiceContent"></div>
+
+                <div id="efakturaOtpremnicaBox" style="margin-top: 18px; padding: 14px; border: 1px solid #e3e8ef; border-radius: 10px; background: #f8f9fa;">
+                    <div style="font-weight: 700; margin-bottom: 10px;">🧾 eFaktura: отпремница (опционально)</div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items:end;">
+                        <div class="form-group" style="margin:0;">
+                            <label style="font-weight:600;">Номер отпремнице</label>
+                            <input type="text" id="efakturaOtpremnicaNumber" placeholder="например: 2-31032026" style="width:100%; padding:10px; border:1px solid #ddd; border-radius: 6px;">
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label style="font-weight:600;">PDF отпремнице</label>
+                            <input type="file" id="efakturaOtpremnicaPdf" accept="application/pdf" style="width:100%;">
+                        </div>
+                    </div>
+                    <div id="efakturaOtpremnicaStatus" style="margin-top:10px; font-size:12px; color:#666;"></div>
+                    <div style="margin-top:10px; font-size:11px; color:#666;">
+                        Если заполнить — в UBL будет добавлен `DespatchDocumentReference` и (при выборе PDF) вложение через `AdditionalDocumentReference`.
+                    </div>
+                </div>
+
                 <div style="text-align: center; margin-top: 20px;">
                     <button class="btn btn-primary" onclick="exportInvoiceToPDF()">Экспорт PDF</button>
                     <button class="btn btn-secondary" onclick="downloadInvoiceAsHTML()">Скачать HTML</button>
@@ -4155,6 +4177,17 @@
                 <div id="categoriesChart">График продаж по категориям будет отображен здесь</div>
             </div>
 
+            <!-- Продажи по общинам (районам) -->
+            <div class="chart-container">
+                <div class="chart-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Продажи по общинам (районам)</span>
+                    <button class="btn btn-success" onclick="exportMunicipalitiesToExcel()" style="padding: 8px 16px; font-size: 13px; margin: 0;">
+                        📊 Экспорт в Excel
+                    </button>
+                </div>
+                <div id="municipalitiesChart">Статистика по общинам будет отображена здесь</div>
+            </div>
+
             <!-- Статистика по субкатегориям -->
             <div class="chart-container">
                 <div class="chart-title" style="display: flex; justify-content: space-between; align-items: center;">
@@ -4686,6 +4719,10 @@
                                 <input type="checkbox" id="perm_logs" style="width: 20px; height: 20px; cursor: pointer; margin: 0;">
                                 <span style="font-size: 15px; color: #333;">Логи</span>
                             </label>
+                            <label style="display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 12px; cursor: pointer; padding: 10px; border-radius: 8px; transition: background 0.2s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                                <input type="checkbox" id="perm_upload" style="width: 20px; height: 20px; cursor: pointer; margin: 0;">
+                                <span style="font-size: 15px; color: #333;">Выгрузка данных (upload в SQLite Cloud)</span>
+                            </label>
                             <hr style="margin: 10px 0; border: none; border-top: 2px solid #e9ecef;">
                             <label style="display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 12px; cursor: pointer; padding: 10px; border-radius: 8px; transition: background 0.2s; background: #fff3cd;" id="editUserPermLabel" onmouseover="if(!this.querySelector('input').disabled) this.style.background='#ffe69c'" onmouseout="if(!this.querySelector('input').disabled) this.style.background='#fff3cd'; else this.style.background='#f8f9fa'">
                                 <input type="checkbox" id="perm_editUsers" style="width: 20px; height: 20px; cursor: pointer; margin: 0;">
@@ -4853,6 +4890,17 @@
                 <button class="close" onclick="closeSyncModal()" style="color: white; opacity: 0.8;">&times;</button>
             </div>
             <div class="modal-body" style="padding: 25px;">
+                <!-- Вкладки настроек -->
+                <div style="display: flex; gap: 10px; margin-bottom: 18px;">
+                    <button class="btn btn-primary" id="syncTabBtnSqlite" onclick="switchSyncTab('sqlite')" style="flex: 1;">
+                        ☁️ SQLite Cloud
+                    </button>
+                    <button class="btn btn-secondary" id="syncTabBtnEfaktura" onclick="switchSyncTab('efaktura')" style="flex: 1;">
+                        🧾 eFaktura
+                    </button>
+                </div>
+
+                <div id="syncTabSqlite">
                 <!-- Статус подключения -->
                 <div id="syncConnectionStatus" style="margin-bottom: 20px; padding: 15px; border-radius: 8px; background: #f8f9fa;">
                     <div style="display: flex; align-items: center; gap: 10px;">
@@ -4905,12 +4953,91 @@
                     </div>
                     <div id="syncLogs" style="background: #1e1e1e; color: #d4d4d4; font-family: 'Monaco', 'Consolas', monospace; font-size: 11px; padding: 12px; border-radius: 6px; height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;"></div>
                 </div>
+                </div>
+
+                <div id="syncTabEfaktura" style="display:none;">
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label style="font-weight: 600; margin-bottom: 8px; display: block;">eFaktura Base URL:</label>
+                        <input type="text" id="efakturaBaseUrlInput" placeholder="https://efaktura.mfin.gov.rs"
+                               style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                        <small style="color: #666; font-size: 11px; display: block; margin-top: 4px;">
+                            Обычно: https://efaktura.mfin.gov.rs
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 18px;">
+                        <label style="font-weight: 600; margin-bottom: 8px; display: block;">eFaktura ApiKey (header ApiKey):</label>
+                        <input type="text" id="efakturaApiKeyInput" placeholder="вставьте ApiKey"
+                               style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                        <small style="color: #666; font-size: 11px; display: block; margin-top: 4px;">
+                            Ключ сохранится локально и будет использоваться для “Отправить в eFaktura”.
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 18px;">
+                        <label style="display:flex; align-items:center; gap:10px; font-weight: 600; cursor:pointer;">
+                            <input type="checkbox" id="efakturaAutoNameSync" style="width:auto;">
+                            Сверять и предлагать обновление названия клиента из eFaktura при отправке
+                        </label>
+                        <small style="color:#666; font-size:11px; display:block; margin-top:4px;">
+                            Проверка/обновление будет выполняться только при нажатии “Отправить в eFaktura”.
+                        </small>
+                    </div>
+
+                    <div style="display:flex; gap:10px; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" onclick="testEfakturaConnection()" style="flex: 1; min-width: 140px;">
+                            🔌 Проверить eFaktura
+                        </button>
+                        <button class="btn btn-primary" onclick="saveEfakturaSettings()" style="flex: 1; min-width: 140px;">
+                            💾 Сохранить ключ
+                        </button>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer" style="padding: 15px 25px; background: #f8f9fa; border-radius: 0 0 8px 8px;">
                 <div style="display: flex; gap: 10px; justify-content: space-between; width: 100%;">
                     <button class="btn btn-secondary" onclick="closeSyncModal()">Закрыть</button>
                     <button class="btn btn-success" onclick="performFullSync()" id="syncNowBtn" style="background: #28a745; border-color: #28a745;">
                         🔄 Синхронизировать сейчас
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно сверки названия клиента (eFaktura) -->
+    <div id="efakturaNameSyncModal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width: 560px;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%); color: #333; border-radius: 8px 8px 0 0; padding: 20px;">
+                <h2 class="modal-title" style="color: #333; margin: 0;">🧾 Сверка названия клиента (eFaktura)</h2>
+                <button class="close" onclick="closeEfakturaNameSyncModal(false)" style="color: #333; opacity: 0.8;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 25px;">
+                <p style="font-size: 14px; color: #333; margin-top: 0;">
+                    Найдено расхождение названия компании по <strong>MB</strong>.
+                </p>
+                <div style="background:#f8f9fa; border:1px solid #e3e8ef; border-radius:10px; padding:14px; margin: 14px 0;">
+                    <div style="margin-bottom:10px;">
+                        <strong>MB:</strong> <span id="efakturaNameSyncMb">—</span>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <strong>В вашей системе:</strong>
+                        <div id="efakturaNameSyncLocalName" style="margin-top:6px; background:white; border:1px solid #e9ecef; border-radius:8px; padding:10px; color:#333;"></div>
+                    </div>
+                    <div>
+                        <strong>В eFaktura:</strong>
+                        <div id="efakturaNameSyncEfName" style="margin-top:6px; background:white; border:1px solid #e9ecef; border-radius:8px; padding:10px; color:#333;"></div>
+                    </div>
+                </div>
+                <p style="font-size: 12px; color: #666; margin-bottom: 0;">
+                    Нажмите “Подтвердить”, чтобы обновить название в карточке клиента.
+                </p>
+            </div>
+            <div class="modal-footer" style="padding: 15px 25px; background: #f8f9fa; border-radius: 0 0 8px 8px;">
+                <div style="display:flex; gap:10px; justify-content:flex-end; width:100%;">
+                    <button class="btn btn-secondary" onclick="closeEfakturaNameSyncModal(false)">Отмена</button>
+                    <button class="btn btn-warning" onclick="closeEfakturaNameSyncModal(true)" style="background:#ffc107; border-color:#ffc107; color:#333;">
+                        Подтвердить
                     </button>
                 </div>
             </div>
@@ -4930,6 +5057,24 @@
                     <div id="syncProgressBar" style="background: linear-gradient(90deg, #17a2b8, #20c997); height: 100%; width: 0%; transition: width 0.3s;"></div>
                 </div>
                 <p id="syncProgressDetail" style="font-size: 12px; color: #666;"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно ограничения доступа (Pasha) -->
+    <div id="unavailableActionModal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; border-radius: 8px 8px 0 0; padding: 20px;">
+                <h2 class="modal-title" style="color: white; margin: 0;">⛔ Недоступно</h2>
+                <button class="close" onclick="closeUnavailableActionModal()" style="color: white; opacity: 0.8;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 25px;">
+                <p id="unavailableActionText" style="font-size: 16px; color: #333; margin: 0;">
+                    вам это недоступно
+                </p>
+            </div>
+            <div class="modal-footer" style="padding: 15px 25px; background: #f8f9fa; border-radius: 0 0 8px 8px; display:flex; justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="closeUnavailableActionModal()">ок, Бранко жлоб не доделал систему</button>
             </div>
         </div>
     </div>
@@ -7076,10 +7221,82 @@
                 });
                 console.log('═══════════════════════════════════════════════════════════');
                 
-                // ВАЖНО: Статусы paid/delivered должны храниться на устройстве (SQLite через backend),
+                // Загружаем статусы из localStorage как FALLBACK (если в API нет данных)
+                const savedPredracunsLocal = localStorage.getItem('confirmedPredracuns');
+                const savedRacunsLocal = localStorage.getItem('confirmedRacuns');
+                const savedInvoicesLocal = localStorage.getItem('confirmedInvoices');
+                
+                let localStatuses = {};
+
+                // У одного документа в UI часто: number = "1-DDMMYYYY", invoiceNumber = "p1-DDMMYYYY".
+                // Раньше в map клали только doc.number||doc.invoiceNumber — порядок разный у разных массивов,
+                // а при merge с API использовался inv.number||inv.invoiceNumber — ключи не совпадали,
+                // локальные paid/delivered не находились после перезапуска.
+                const registerLocalStatusKeys = (map, doc) => {
+                    if (doc.paid === undefined && doc.delivered === undefined) return;
+                    const st = { paid: doc.paid, delivered: doc.delivered };
+                    const add = (k) => {
+                        if (k === undefined || k === null || String(k).trim() === '') return;
+                        const s = String(k).trim();
+                        map[s] = st;
+                        const stripped = s.replace(/^[poPO]/, '');
+                        if (stripped && stripped !== s) {
+                            map[stripped] = st;
+                        }
+                    };
+                    add(doc.invoiceNumber || doc.invoice_number);
+                    add(doc.number);
+                };
+
+                const pickFromLocalStatuses = (map, inv) => {
+                    const candidates = [];
+                    const push = (v) => {
+                        if (v === undefined || v === null || String(v).trim() === '') return;
+                        const s = String(v).trim();
+                        candidates.push(s);
+                        const stripped = s.replace(/^[poPO]/, '');
+                        if (stripped && stripped !== s) candidates.push(stripped);
+                    };
+                    push(inv.invoiceNumber || inv.invoice_number);
+                    push(inv.number);
+                    for (const c of candidates) {
+                        if (map[c]) return map[c];
+                    }
+                    return undefined;
+                };
+                
+                if (savedPredracunsLocal) {
+                    try {
+                        JSON.parse(savedPredracunsLocal).forEach(doc => {
+                            if (doc.number || doc.invoiceNumber || doc.invoice_number) {
+                                registerLocalStatusKeys(localStatuses, doc);
+                            }
+                        });
+                    } catch(e) {}
+                }
+                if (savedRacunsLocal) {
+                    try {
+                        JSON.parse(savedRacunsLocal).forEach(doc => {
+                            if (doc.number || doc.invoiceNumber || doc.invoice_number) {
+                                registerLocalStatusKeys(localStatuses, doc);
+                            }
+                        });
+                    } catch(e) {}
+                }
+                if (savedInvoicesLocal) {
+                    try {
+                        JSON.parse(savedInvoicesLocal).forEach(doc => {
+                            if (doc.number || doc.invoiceNumber || doc.invoice_number) {
+                                registerLocalStatusKeys(localStatuses, doc);
+                            }
+                        });
+                    } catch(e) {}
+                }
+                
+                // ВАЖНО: статусы paid/delivered должны храниться на устройстве (SQLite через backend),
                 // а не в localStorage. Поэтому не делаем fallback/мердж из localStorage.
                 allInvoices.forEach(inv => {
-                    const key = inv.number || inv.invoiceNumber;
+                    const key = inv.invoiceNumber || inv.invoice_number || inv.number;
                     console.log(`   ✅ ${key}: paid=${inv.paid}, delivered=${inv.delivered} (из API/SQLite)`);
                 });
                 
@@ -7102,8 +7319,9 @@
                 });
                 
                 // Разделяем по типам документов
+                // В локальной БД/sync часто попадает documentType "invoice", пусто или "delivery" — не отбрасываем (всё кроме предрачуна в «рачуны»)
                 let tempPredracuns = filteredInvoices.filter(inv => inv.documentType === 'predracun');
-                let tempRacuns = filteredInvoices.filter(inv => inv.documentType === 'racun');
+                let tempRacuns = filteredInvoices.filter(inv => inv.documentType !== 'predracun');
                 
                 // ДЕДУПЛИКАЦИЯ: Удаляем дубликаты по номеру документа
                 const seenPredracuns = new Set();
@@ -7147,11 +7365,11 @@
                 // Сохраняем количество для отображения
                 window.uniqueInvoicesCount = uniqueInvoiceNumbers.size;
                 
-                // Сохраняем в localStorage для fallback и для истории (включая восстановленные статусы)
+                // Сохраняем в localStorage только для fallback/истории, но БЕЗ paid/delivered (они в SQLite).
                 safeLocalStorage('set', 'confirmedInvoices', confirmedInvoices);
                 safeLocalStorage('set', 'confirmedPredracuns', confirmedPredracuns);
                 safeLocalStorage('set', 'confirmedRacuns', confirmedRacuns);
-                console.log('💾 Saved invoices to localStorage (с сохранёнными статусами)');
+                console.log('💾 Saved invoices to localStorage (без статусов paid/delivered)');
                 
                 return true;
             } catch (error) {
@@ -7906,9 +8124,8 @@
                         const item = localStorage.getItem(key);
                         return item ? JSON.parse(item) : null;
                     case 'set':
-                        // ВАЖНО (v20260424_019): статусы paid/delivered должны храниться на устройстве
-                        // через backend (SQLite), а не в localStorage (он может сбрасываться между сессиями).
-                        // Поэтому при сохранении списков документов в localStorage вырезаем paid/delivered.
+                        // ВАЖНО: paid/delivered должны сохраняться в SQLite (backend), а не в localStorage.
+                        // localStorage используется только как fallback/кэш без статусов.
                         if (key === 'confirmedInvoices' || key === 'confirmedPredracuns' || key === 'confirmedRacuns') {
                             if (Array.isArray(data)) {
                                 data = data.map(d => {
@@ -7926,7 +8143,6 @@
                                 });
                             }
                         }
-
                         localStorage.setItem(key, JSON.stringify(data));
                         return true;
                     case 'remove':
@@ -8472,6 +8688,13 @@
 
         function showTab(tabName, event) {
             const isClientUser = window.currentUser && window.currentUser.userType === 'client';
+            const perms = window.currentUser?.permissions || {};
+
+            // Pasha: documents tab disabled
+            if (window.currentUser?.username === 'Pasha' && tabName === 'invoice') {
+                showUnavailableActionModal('вам это недоступно');
+                return;
+            }
             
             // Скрываем все контентные блоки
             document.querySelectorAll('.tab-content').forEach(tab => {
@@ -8560,12 +8783,170 @@
         }
 
         function showAlert(message, type) {
+            // Stackable alerts container (so multiple alerts don't overlap)
+            let container = document.getElementById('appAlertsContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'appAlertsContainer';
+                container.style.position = 'fixed';
+                container.style.top = '16px';
+                container.style.right = '16px';
+                container.style.zIndex = '99999';
+                container.style.display = 'flex';
+                container.style.flexDirection = 'column';
+                container.style.gap = '10px';
+                container.style.maxWidth = '420px';
+                container.style.alignItems = 'stretch';
+                container.style.pointerEvents = 'none';
+                document.body.appendChild(container);
+            }
+
             const alertDiv = document.createElement('div');
             alertDiv.className = `alert alert-${type}`;
             alertDiv.textContent = message;
-            document.body.appendChild(alertDiv);
-            setTimeout(() => document.body.removeChild(alertDiv), 3000);
+            // Override global .alert CSS (it is position: fixed in this app and would cause overlap)
+            alertDiv.style.position = 'relative';
+            alertDiv.style.top = 'auto';
+            alertDiv.style.right = 'auto';
+            alertDiv.style.left = 'auto';
+            alertDiv.style.bottom = 'auto';
+            alertDiv.style.margin = '0';
+            alertDiv.style.width = '100%';
+            alertDiv.style.minWidth = '0';
+            alertDiv.style.boxSizing = 'border-box';
+            alertDiv.style.whiteSpace = 'pre-wrap';
+            alertDiv.style.boxShadow = '0 6px 18px rgba(0,0,0,0.15)';
+            alertDiv.style.pointerEvents = 'auto';
+
+            container.appendChild(alertDiv);
+
+            setTimeout(() => {
+                try { alertDiv.remove(); } catch {}
+                // Cleanup container if empty
+                try {
+                    if (container && container.childElementCount === 0) container.remove();
+                } catch {}
+            }, 4500);
         }
+
+        function showUnavailableActionModal(message) {
+            const modal = document.getElementById('unavailableActionModal');
+            const textEl = document.getElementById('unavailableActionText');
+            if (textEl) textEl.textContent = message || 'вам это недоступно';
+            if (modal) modal.style.display = 'block';
+        }
+
+        function closeUnavailableActionModal() {
+            const modal = document.getElementById('unavailableActionModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function isPashaReadOnlyUser() {
+            return window.currentUser?.username === 'Pasha';
+        }
+
+        function base64FromDataUrl(dataUrl) {
+            const s = String(dataUrl || '');
+            const idx = s.indexOf('base64,');
+            if (idx === -1) return '';
+            return s.slice(idx + 'base64,'.length).trim();
+        }
+
+        function humanBytes(n) {
+            const num = Number(n || 0);
+            if (!Number.isFinite(num) || num <= 0) return '0 B';
+            const units = ['B','KB','MB','GB'];
+            let i = 0;
+            let v = num;
+            while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+            return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+        }
+
+        async function handleEfakturaOtpremnicaPdfSelected(file) {
+            if (!file) return;
+            if (!currentInvoiceData) {
+                notifyUser('Сначала создайте рачун перед выбором PDF отпремнице.', 'warning');
+                return;
+            }
+            if (file.type && file.type !== 'application/pdf') {
+                notifyUser('Выберите PDF файл.', 'danger');
+                return;
+            }
+            // мягкий лимит, чтобы не отправлять гигантские base64
+            const maxBytes = 7 * 1024 * 1024; // 7MB
+            if (file.size > maxBytes) {
+                notifyUser(`PDF слишком большой (${humanBytes(file.size)}). Рекомендуемый максимум: ${humanBytes(maxBytes)}.`, 'danger');
+                return;
+            }
+            const statusEl = document.getElementById('efakturaOtpremnicaStatus');
+            if (statusEl) statusEl.textContent = `Читаю PDF… (${humanBytes(file.size)})`;
+
+            const dataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('FileReader error'));
+                reader.onload = () => resolve(String(reader.result || ''));
+                reader.readAsDataURL(file);
+            });
+            const b64 = base64FromDataUrl(dataUrl);
+            if (!b64) {
+                notifyUser('Не удалось прочитать PDF как base64.', 'danger');
+                if (statusEl) statusEl.textContent = 'Ошибка чтения PDF.';
+                return;
+            }
+
+            currentInvoiceData.efakturaOtpremnica = currentInvoiceData.efakturaOtpremnica || {};
+            currentInvoiceData.efakturaOtpremnica.pdfBase64 = b64;
+            currentInvoiceData.efakturaOtpremnica.pdfFilename = file.name || 'otpremnica.pdf';
+            currentInvoiceData.efakturaOtpremnica.pdfMime = file.type || 'application/pdf';
+
+            if (statusEl) statusEl.textContent = `PDF выбран: ${file.name} (${humanBytes(file.size)})`;
+        }
+
+        function initEfakturaOtpremnicaUiIfNeeded() {
+            const pdfEl = document.getElementById('efakturaOtpremnicaPdf');
+            if (pdfEl && !pdfEl.__efakturaBound) {
+                pdfEl.__efakturaBound = true;
+                pdfEl.addEventListener('change', async (e) => {
+                    try {
+                        const file = e?.target?.files?.[0] || null;
+                        await handleEfakturaOtpremnicaPdfSelected(file);
+                    } catch (err) {
+                        console.error('otpremnica pdf error', err);
+                        notifyUser('Ошибка чтения PDF отпремнице: ' + (err?.message || err), 'danger');
+                    }
+                });
+            }
+        }
+
+        // Global guard: block create/edit actions for Pasha with required modal
+        document.addEventListener('click', (e) => {
+            try {
+                if (!isPashaReadOnlyUser()) return;
+                const el = e.target?.closest?.('button,a,input[type=\"submit\"]');
+                if (!el) return;
+                const onclick = el.getAttribute?.('onclick') || '';
+                if (!onclick) return;
+
+                // Allowed actions: history/stats/accounts/exports/sync settings
+                const allowed = [
+                    'showObjectHistory', 'openSyncModal', 'performFullSync',
+                    'export', 'download', 'copy', 'showLogs', 'openLogs',
+                    'loadStatistics', 'updateStatistics', 'showStatistics'
+                ];
+                if (allowed.some(k => onclick.includes(k))) return;
+
+                // Block typical create/edit actions
+                const blocked = [
+                    'add', 'create', 'save', 'delete', 'confirm',
+                    'generate', 'edit', 'update', 'deduct', 'restore'
+                ];
+                if (blocked.some(k => onclick.toLowerCase().includes(k))) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showUnavailableActionModal('вам это недоступно');
+                }
+            } catch {}
+        }, true);
 
         // СИСТЕМА УПРАВЛЕНИЯ ОБРАБОТЧИКАМИ СОБЫТИЙ (предотвращение утечек памяти)
         const EventManager = {
@@ -11629,7 +12010,7 @@
             document.getElementById('extractedData').style.display = 'block';
         }
 
-        function generateRacun(source) {
+        function generateRacunFromSource(source) {
             console.log('Генерация рачуна, источник:', source);
             
             if (source === 'products') {
@@ -11726,6 +12107,13 @@
             // Обновляем текст кнопки утверждения
             console.log('→ Обновление кнопки утверждения для РАЧУНА...');
             updateConfirmButtonText('racun');
+
+            // Включаем отправку в eFaktura после успешной генерации рачуна
+            const sendBtn = document.getElementById('sendToEfakturaBtn');
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.title = 'Отправить текущий рачун в eFaktura';
+            }
             
             console.log('=== ГЕНЕРАЦИЯ РАЧУНА ЗАВЕРШЕНА ===');
             console.log('Итоговый объект рачуна:', currentInvoiceData);
@@ -11878,26 +12266,47 @@
             
             console.log('Товары для рачуна:', items);
             
+            // Синхронизируем даты/НДС с формой инвойса (дата выставления = datum prometa)
+            const formInvoiceDate = document.getElementById('invoiceDate')?.value || '';
+            const formDueDate = document.getElementById('invoiceDueDate')?.value || '';
+            const formVatRate = parseFloat(document.getElementById('invoiceVAT')?.value || '0') || 0;
+            const formInvoiceNumber = document.getElementById('invoiceNumber')?.value?.trim() || '';
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            const invoiceDate = formInvoiceDate || todayStr;
+            const dueDate = formDueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+            // Пытаемся сопоставить клиента с базой, чтобы сохранить MB/PIB (для eFaktura проверки)
+            const matchedClient = clients.find(c =>
+                (c.name && c.name.toLowerCase() === String(clientData).toLowerCase()) ||
+                (c.legalName && c.legalName.toLowerCase() === String(clientData).toLowerCase())
+            );
+
+            const subtotal = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+            const vatAmount = subtotal * (formVatRate / 100);
+            const total = subtotal + vatAmount;
+
             // Создаем объект рачуна
             const racunData = {
-                number: `RACUN-${Date.now()}`,
-                date: new Date().toISOString().split('T')[0],
-                dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // +30 дней
-                client: {
+                number: formInvoiceNumber || `RACUN-${Date.now()}`,
+                date: invoiceDate,
+                dueDate: dueDate,
+                client: matchedClient ? matchedClient : {
                     name: clientData,
                     legalName: clientData,
                     mb: '00000000',
                     pib: '000000000'
                 },
                 items: items,
-                subtotal: items.reduce((sum, item) => sum + item.amount, 0),
-                vatRate: 20,
-                vatAmount: items.reduce((sum, item) => sum + item.amount, 0) * 0.2,
-                total: items.reduce((sum, item) => sum + item.amount, 0) * 1.2
+                subtotal: subtotal,
+                vatRate: formVatRate,
+                vatAmount: vatAmount,
+                total: total,
+                documentType: 'racun'
             };
             
-            // Генерируем HTML рачуна
-            const racunHTML = generateRacunHTML(racunData);
+            // Генерируем HTML рачуна (единая функция)
+            const racunHTML = generateInvoiceHTML(racunData);
             
             // Закрываем модальное окно
             closeUploadPredracunModal();
@@ -11905,6 +12314,14 @@
             // Показываем предпросмотр на главной странице
             document.getElementById('invoiceContent').innerHTML = racunHTML;
             document.getElementById('invoicePreview').style.display = 'block';
+            currentInvoiceData = racunData;
+            updateConfirmButtonText('racun');
+
+            const sendBtn = document.getElementById('sendToEfakturaBtn');
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.title = 'Отправить текущий рачун в eFaktura';
+            }
             
             // Переключаемся на вкладку инвойсов если не на ней
             showTab('invoice');
@@ -14943,6 +15360,13 @@
 
         async function generateInvoice() {
             console.log('=== generateInvoice вызвана ===');
+
+            // Предрачун не отправляем в eFaktura — отключаем кнопку отправки
+            const sendBtn = document.getElementById('sendToEfakturaBtn');
+            if (sendBtn) {
+                sendBtn.disabled = true;
+                sendBtn.title = 'Отправка в eFaktura доступна для рачуна';
+            }
             
             // Валидация полей инвойса с новой системой
             const invoiceFields = [
@@ -15105,6 +15529,7 @@
             document.getElementById('invoicePreview').style.display = 'block';
             document.getElementById('invoicePreview').scrollIntoView({ behavior: 'smooth' });
             document.getElementById('invoiceConfirmMessage').style.display = 'none';
+            try { initEfakturaOtpremnicaUiIfNeeded(); } catch {}
             
             // Обновляем текст кнопки утверждения
             updateConfirmButtonText('predracun');
@@ -15316,18 +15741,33 @@
                 console.log('Пропускаем обновление остатков склада (избегаем двойного списания)');
             } else {
                 // Обновляем остатки в группах товаров только если это первый документ с таким номером
-                console.log('Обновляем остатки товаров...');
-                updateGroupStockOnInvoice(currentInvoiceData.items);
+                try {
+                    console.log('Обновляем остатки товаров...');
+                    updateGroupStockOnInvoice(currentInvoiceData.items);
+                } catch (e) {
+                    console.error('❌ Ошибка updateGroupStockOnInvoice:', e);
+                    showAlert('⚠️ Ошибка списания склада (инвойс будет сохранен): ' + (e?.message || e), 'warning');
+                }
             }
             
             // Обновляем запасы чая при утверждении
-            console.log('Обновляем запасы чая...');
-            updateTeaStocksOnInvoiceApproval(currentInvoiceData.items);
+            try {
+                console.log('Обновляем запасы чая...');
+                updateTeaStocksOnInvoiceApproval(currentInvoiceData.items);
+            } catch (e) {
+                console.error('❌ Ошибка updateTeaStocksOnInvoiceApproval:', e);
+                showAlert('⚠️ Ошибка обновления запасов чая (инвойс будет сохранен): ' + (e?.message || e), 'warning');
+            }
             
             // Списываем связанные расходники при утверждении инвойса
             if (!alreadyProcessed) {
-                console.log('Списываем расходники...');
-                deductConsumablesOnInvoice(currentInvoiceData.items);
+                try {
+                    console.log('Списываем расходники...');
+                    deductConsumablesOnInvoice(currentInvoiceData.items);
+                } catch (e) {
+                    console.error('❌ Ошибка deductConsumablesOnInvoice:', e);
+                    showAlert('⚠️ Ошибка списания расходников (инвойс будет сохранен): ' + (e?.message || e), 'warning');
+                }
             }
             
             // Создаем копию документа с полной структурой данных для копирования
@@ -15571,7 +16011,14 @@
         // ФУНКЦИИ ДЛЯ СОЗДАНИЯ РАЧУНА
         // ============================================
 
-        function generateRacun() {
+        function generateRacun(source) {
+            // ЕДИНАЯ точка входа (раньше было 2 функции generateRacun, которые конфликтовали).
+            // Если явно указан источник (загруженный предрачун и т.п.) — используем старую логику,
+            // иначе генерируем рачун из текущей формы.
+            if (source === 'products' || source === 'predracun') {
+                return generateRacunFromSource(source);
+            }
+
             // Валидация полей инвойса (используем те же поля формы)
             const invoiceFields = [
                 { id: 'invoiceNumber', name: 'Номер рачуна', type: 'required' },
@@ -15681,14 +16128,884 @@
             document.getElementById('invoiceContent').innerHTML = racunHTML;
             document.getElementById('invoicePreview').style.display = 'block';
             document.getElementById('invoicePreview').scrollIntoView({ behavior: 'smooth' });
+            try { initEfakturaOtpremnicaUiIfNeeded(); } catch {}
             document.getElementById('invoiceConfirmMessage').style.display = 'none';
             
             // Обновляем кнопку утверждения для РАЧУНА
             console.log('→ Обновление кнопки утверждения для РАЧУНА...');
             updateConfirmButtonText('racun');
+
+            // Включаем отправку в eFaktura после успешной генерации рачуна
+            const sendBtn = document.getElementById('sendToEfakturaBtn');
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.title = 'Отправить текущий рачун в eFaktura';
+            }
             
             console.log('=== РАЧУН СГЕНЕРИРОВАН ЧЕРЕЗ КНОПКУ ===');
             showAlert('Рачун сгенерирован! Нажмите "Утвердить рачун" для сохранения.', 'success');
+        }
+
+        // ============================================================
+        // eFaktura (Public API) integration - sales invoice (račun)
+        // ============================================================
+
+        function getEfakturaSettings() {
+            return {
+                baseUrl: (localStorage.getItem('efakturaBaseUrl') || 'https://efaktura.mfin.gov.rs').replace(/\/+$/, ''),
+                apiKey: (localStorage.getItem('efakturaApiKey') || '').trim()
+            };
+        }
+
+        function ensureEfakturaApiKey() {
+            const existing = (localStorage.getItem('efakturaApiKey') || '').trim();
+            if (existing) return existing;
+            showAlert('Не задан eFaktura ApiKey. Откройте “Синхронизация” → вкладка “eFaktura” и сохраните ключ.', 'warning');
+            return '';
+        }
+
+        function notifyUser(message, type = 'info') {
+            try {
+                if (typeof showAlert === 'function') {
+                    showAlert(message, type);
+                    return;
+                }
+            } catch {}
+            try { window.alert(message); } catch {}
+        }
+
+        function withTimeout(promise, ms, label = 'operation') {
+            let timer = null;
+            const timeout = new Promise((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms);
+            });
+            return Promise.race([promise, timeout]).finally(() => {
+                if (timer) clearTimeout(timer);
+            });
+        }
+
+        function digitsOnly(value) {
+            return String(value ?? '').replace(/\D+/g, '').trim();
+        }
+
+        let __efakturaNameSyncResolve = null;
+
+        function openEfakturaNameSyncModal({ mb, localName, efName }) {
+            return new Promise((resolve) => {
+                __efakturaNameSyncResolve = resolve;
+
+                const modal = document.getElementById('efakturaNameSyncModal');
+                const mbEl = document.getElementById('efakturaNameSyncMb');
+                const localEl = document.getElementById('efakturaNameSyncLocalName');
+                const efEl = document.getElementById('efakturaNameSyncEfName');
+
+                if (mbEl) mbEl.textContent = String(mb || '—');
+                if (localEl) localEl.textContent = String(localName || '—');
+                if (efEl) efEl.textContent = String(efName || '—');
+
+                if (modal) modal.style.display = 'block';
+                else resolve(false);
+            });
+        }
+
+        function closeEfakturaNameSyncModal(confirmed) {
+            const modal = document.getElementById('efakturaNameSyncModal');
+            if (modal) modal.style.display = 'none';
+            const resolve = __efakturaNameSyncResolve;
+            __efakturaNameSyncResolve = null;
+            if (typeof resolve === 'function') resolve(!!confirmed);
+        }
+
+        function normalizeCompanyName(name) {
+            return String(name || '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toUpperCase();
+        }
+
+        function getEfakturaNameCache() {
+            try {
+                return JSON.parse(localStorage.getItem('efakturaNameCache') || '{}') || {};
+            } catch {
+                return {};
+            }
+        }
+
+        function setEfakturaNameCache(cache) {
+            try {
+                localStorage.setItem('efakturaNameCache', JSON.stringify(cache || {}));
+            } catch {}
+        }
+
+        async function getEfakturaCompanyNameByMB(mb) {
+            const { baseUrl } = getEfakturaSettings();
+            const apiKey = ensureEfakturaApiKey();
+            if (!apiKey) throw new Error('Не задан ApiKey для eFaktura');
+            const mbStr = digitsOnly(mb);
+            if (!mbStr) return null;
+
+            // cache: { [mb]: { name, fetchedAt } }
+            const cache = getEfakturaNameCache();
+            const cached = cache[mbStr];
+            const now = Date.now();
+            const ttlMs = 7 * 24 * 60 * 60 * 1000; // 7 дней
+            if (cached?.name && cached?.fetchedAt && (now - cached.fetchedAt) < ttlMs) {
+                return cached.name;
+            }
+
+            // ВНИМАНИЕ: endpoint возвращает большой список. Дергаем только по требованию (на отправке) и кешируем результат.
+            const url = `${baseUrl.replace(/\/+$/, '')}/api/publicApi/getAllCompanies?includeAllStatuses=true`;
+            const headers = { 'ApiKey': apiKey, 'Accept': 'application/json' };
+
+            if (!window.SyncService || typeof window.SyncService.httpRequest !== 'function') {
+                throw new Error('HTTP слой недоступен (SyncService.httpRequest)');
+            }
+
+            const resp = await withTimeout(
+                window.SyncService.httpRequest(url, { method: 'GET', headers }),
+                60000,
+                'getAllCompanies'
+            );
+            const text = await resp.text().catch(() => '');
+            if (!resp.ok) {
+                throw new Error(`Ошибка getAllCompanies (${resp.status}): ${text || 'Request failed'}`);
+            }
+
+            let data = null;
+            try { data = JSON.parse(text); } catch { data = null; }
+            if (!Array.isArray(data)) return null;
+
+            // MiniCompanyDto в ответе обычно с PascalCase полями: RegistrationCode / Name
+            const rec = data.find(c => digitsOnly(c?.RegistrationCode) === mbStr);
+            const name = rec?.Name ? String(rec.Name).trim() : null;
+
+            cache[mbStr] = { name: name || null, fetchedAt: now };
+            setEfakturaNameCache(cache);
+            return name;
+        }
+
+        async function getEfakturaCompanyRecordByMB(mb) {
+            const { baseUrl } = getEfakturaSettings();
+            const apiKey = ensureEfakturaApiKey();
+            if (!apiKey) throw new Error('Не задан ApiKey для eFaktura');
+            const mbStr = digitsOnly(mb);
+            if (!mbStr) return null;
+
+            const cacheKey = `efakturaCompanyRecord:${mbStr}`;
+            try {
+                const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+                if (cached?.fetchedAt && (Date.now() - cached.fetchedAt) < (7 * 24 * 60 * 60 * 1000)) {
+                    return cached.record || null;
+                }
+            } catch {}
+
+            const url = `${baseUrl.replace(/\/+$/, '')}/api/publicApi/getAllCompanies?includeAllStatuses=true`;
+            const headers = { 'ApiKey': apiKey, 'Accept': 'application/json' };
+            if (!window.SyncService || typeof window.SyncService.httpRequest !== 'function') {
+                throw new Error('HTTP слой недоступен (SyncService.httpRequest)');
+            }
+
+            const resp = await withTimeout(
+                window.SyncService.httpRequest(url, { method: 'GET', headers }),
+                60000,
+                'getAllCompanies'
+            );
+            const text = await resp.text().catch(() => '');
+            if (!resp.ok) throw new Error(`Ошибка getAllCompanies (${resp.status}): ${text || 'Request failed'}`);
+            let data = null;
+            try { data = JSON.parse(text); } catch { data = null; }
+            if (!Array.isArray(data)) return null;
+
+            const rec = data.find(c => digitsOnly(c?.RegistrationCode) === mbStr) || null;
+            try {
+                localStorage.setItem(cacheKey, JSON.stringify({ fetchedAt: Date.now(), record: rec }));
+            } catch {}
+            return rec;
+        }
+
+        function extractPossiblePibFromCompanyRecord(rec) {
+            if (!rec || typeof rec !== 'object') return '';
+            const candidates = [
+                rec.VatNumber, rec.vatNumber, rec.VATNumber,
+                rec.Pib, rec.PIB, rec.pib,
+                rec.TaxNumber, rec.taxNumber
+            ].filter(Boolean);
+            for (const c of candidates) {
+                const d = digitsOnly(c);
+                if (d.length >= 8) return d;
+            }
+            // Fallback: scan all string/number values for a 9-digit-like token (PIB in RS is 9 digits)
+            try {
+                for (const v of Object.values(rec)) {
+                    if (typeof v === 'string' || typeof v === 'number') {
+                        const d = digitsOnly(v);
+                        if (d.length === 9) return d;
+                    }
+                }
+            } catch {}
+            return '';
+        }
+
+        async function maybeSuggestClientNameUpdateFromEfaktura(client) {
+            const stored = localStorage.getItem('efakturaAutoNameSync');
+            const auto = stored === null ? true : stored === 'true';
+            if (!auto) return;
+            if (!client?.mb) return;
+
+            notifyUser('⏳ Получаю название компании из eFaktura...', 'info');
+            const efName = await getEfakturaCompanyNameByMB(client.mb);
+            if (!efName) return;
+
+            const localName = client.legalName || client.name || '';
+
+            // Если локальное имя пустое — считаем, что нужно предложить установить имя из eFaktura.
+            if (localName && normalizeCompanyName(localName) === normalizeCompanyName(efName)) return;
+
+            const ok = await openEfakturaNameSyncModal({
+                mb: client.mb,
+                localName: localName || '— (пусто) —',
+                efName
+            });
+            if (!ok) return;
+
+            // Обновляем в памяти
+            client.name = efName;
+            if ('legalName' in client) client.legalName = efName;
+
+            // Пытаемся сохранить в БД через API
+            try {
+                if (client.id && typeof ClientsAPI?.update === 'function') {
+                    await ClientsAPI.update(client.id, client);
+                } else {
+                    // fallback: локальный список + localStorage (на случай старого режима)
+                    localStorage.setItem('clients', JSON.stringify(clients || []));
+                }
+                showAlert('✅ Название клиента обновлено по данным eFaktura', 'success');
+            } catch (e) {
+                console.warn('Не удалось сохранить обновленное имя клиента:', e);
+                showAlert('⚠️ Название клиента обновлено в памяти, но не сохранено в БД: ' + (e?.message || e), 'warning');
+            }
+        }
+
+        function normalizeCompanyOnEfakturaDto(parsed) {
+            // eFaktura sometimes returns PascalCase property names in JSON, e.g. EFakturaRegisteredCompany
+            if (!parsed || typeof parsed !== 'object') return parsed;
+            const v =
+                parsed.eFakturaRegisteredCompany ??
+                parsed.EFakturaRegisteredCompany ??
+                parsed.efakturaRegisteredCompany;
+            if (typeof v === 'boolean') {
+                return { ...parsed, eFakturaRegisteredCompany: v };
+            }
+            return parsed;
+        }
+
+        function isEfakturaRegisteredCompanyDto(parsed) {
+            const p = normalizeCompanyOnEfakturaDto(parsed);
+            return !!p?.eFakturaRegisteredCompany;
+        }
+
+        async function checkClientRegisteredOnEfaktura(client, overrides = null) {
+            const { baseUrl } = getEfakturaSettings();
+            const apiKey = ensureEfakturaApiKey();
+            if (!apiKey) throw new Error('Не задан ApiKey для eFaktura');
+
+            const mbRaw = overrides && ('mb' in overrides) ? overrides.mb : client?.mb;
+            const pibRaw = overrides && ('pib' in overrides) ? overrides.pib : client?.pib;
+
+            // ВАЖНО: для split-проверок передаём null, а не "".
+            // Пустая строка может ломать семантику CompanyAccountIdentificationDto и давать ложные "не зарегистрирован".
+            const mb = mbRaw === '' ? null : digitsOnly(mbRaw);
+            const pib = pibRaw === '' ? null : digitsOnly(pibRaw);
+
+            const payload = {
+                registrationNumber: mb || null,
+                vatNumber: pib || null,
+                jbkjs: null
+            };
+
+            const url = `${baseUrl.replace(/\/+$/, '')}/api/publicApi/Company/CheckIfCompanyRegisteredOnEfaktura`;
+            const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'ApiKey': apiKey };
+            const body = JSON.stringify(payload);
+
+            // Используем Rust http_request (через SyncService) чтобы избежать CORS.
+            if (window.SyncService && typeof window.SyncService.httpRequest === 'function') {
+                const resp = await window.SyncService.httpRequest(url, { method: 'POST', headers, body });
+                const text = await resp.text().catch(() => '');
+                if (!resp.ok) {
+                    throw new Error(`Ошибка проверки клиента в eFaktura (${resp.status}): ${text || 'Request failed'}`);
+                }
+                return normalizeCompanyOnEfakturaDto(JSON.parse(text));
+            }
+
+            const res = await fetch(url, { method: 'POST', headers, body });
+            const text = await res.text().catch(() => '');
+            if (!res.ok) {
+                throw new Error(`Ошибка проверки клиента в eFaktura (${res.status}): ${text || res.statusText}`);
+            }
+            return normalizeCompanyOnEfakturaDto(JSON.parse(text));
+        }
+
+        function xmlEscape(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        }
+
+        function buildSalesInvoiceUblXml(invoice) {
+            // Требование: datum prometa = дата выставления счета
+            const issueDate = invoice?.date; // YYYY-MM-DD
+            const dueDate = invoice?.dueDate;
+
+            // Данные поставщика (как в форме)
+            const supplier = {
+                name: 'Среħа 2024 ДОО Београд (Стари Град)',
+                mb: '22019309',
+                pib: '114407658',
+                address: 'Београд, Стари Град, Мајке Јевросиме 35',
+                iban: '190-0000000085540-29'
+            };
+
+            const client = invoice?.client || {};
+            const currency = 'RSD';
+            const vatRate = Number(invoice?.vatRate || 0);
+
+            // eFaktura expects EN16931 profile used in RS (seen in their own generated UBL)
+            const customizationId = 'urn:cen.eu:en16931:2017#compliant#urn:mfin.gov.rs:srbdt:2022';
+            // In eFaktura UBL, PIB is used as EndpointID with schemeID=9948 and CompanyID has RS prefix
+            const supplierEndpoint = String(supplier.pib || '').trim();
+            const customerEndpoint = String(client.pib || '').trim();
+            const supplierCompanyIdVat = supplierEndpoint ? `RS${supplierEndpoint}` : '';
+            const customerCompanyIdVat = customerEndpoint ? `RS${customerEndpoint}` : '';
+
+            const otpremnicaNumber = String(invoice?.efakturaOtpremnica?.number || '').trim();
+            const otpremnicaPdfBase64 = String(invoice?.efakturaOtpremnica?.pdfBase64 || '').trim().replace(/\s+/g, '');
+            const otpremnicaPdfFilename = String(invoice?.efakturaOtpremnica?.pdfFilename || '').trim();
+            const otpremnicaPdfMime = String(invoice?.efakturaOtpremnica?.pdfMime || 'application/pdf').trim() || 'application/pdf';
+
+            const defaultUnitCode = 'H87'; // eFaktura short list: H87 = kom
+
+            const lineXml = (invoice?.items || []).map((item, idx) => {
+                const qty = Number(item.quantity || 0);
+                const price = Number(item.price || 0);
+                const lineAmount = Number(item.amount || (qty * price) || 0);
+                const unitCode = String(item?.product?.unitCode || item?.unitCode || defaultUnitCode || 'H87').trim() || 'H87';
+
+                return `
+  <cac:InvoiceLine>
+    <cbc:ID>${idx + 1}</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="${xmlEscape(unitCode)}">${qty}</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="${currency}">${lineAmount.toFixed(2)}</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>${xmlEscape(item?.product?.name || item?.product?.code || 'Item')}</cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID>${xmlEscape(item?.product?.code || (idx + 1))}</cbc:ID>
+      </cac:SellersItemIdentification>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>${vatRate > 0 ? 'S' : 'Z'}</cbc:ID>
+        <cbc:Percent>${vatRate.toFixed(2)}</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="${currency}">${price.toFixed(2)}</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>`.trim();
+            }).join('\n');
+
+            const subtotal = Number(invoice?.subtotal || 0);
+            const vatAmount = Number(invoice?.vatAmount || 0);
+            const total = Number(invoice?.total || (subtotal + vatAmount) || 0);
+
+            const vatCategoryId = vatRate > 0 ? 'S' : 'Z';
+            const vatPercentStr = vatRate > 0 ? vatRate.toFixed(2) : '0';
+
+            const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:CustomizationID>${xmlEscape(customizationId)}</cbc:CustomizationID>
+  <cbc:ID>${xmlEscape(invoice?.number || '')}</cbc:ID>
+  <cbc:IssueDate>${xmlEscape(issueDate || '')}</cbc:IssueDate>
+  <cbc:DueDate>${xmlEscape(dueDate || '')}</cbc:DueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>${currency}</cbc:DocumentCurrencyCode>
+
+  <!-- eFaktura validator XSD rejects TaxPointDate and also doesn't allow StartDate here in their profile -->
+  <cac:InvoicePeriod>
+    <cbc:DescriptionCode>35</cbc:DescriptionCode>
+  </cac:InvoicePeriod>
+
+  ${otpremnicaNumber ? `
+  <cac:DespatchDocumentReference>
+    <cbc:ID>${xmlEscape(otpremnicaNumber)}</cbc:ID>
+  </cac:DespatchDocumentReference>` : ''}
+
+  ${otpremnicaPdfBase64 ? `
+  <cac:AdditionalDocumentReference>
+    <cbc:ID>${xmlEscape(otpremnicaPdfFilename || (otpremnicaNumber ? `OTPREMNICA-${otpremnicaNumber}.pdf` : 'otpremnica.pdf'))}</cbc:ID>
+    <cac:Attachment>
+      <cbc:EmbeddedDocumentBinaryObject mimeCode="${xmlEscape(otpremnicaPdfMime)}" filename="${xmlEscape(otpremnicaPdfFilename || (otpremnicaNumber ? `OTPREMNICA-${otpremnicaNumber}.pdf` : 'otpremnica.pdf'))}">${otpremnicaPdfBase64}</cbc:EmbeddedDocumentBinaryObject>
+    </cac:Attachment>
+  </cac:AdditionalDocumentReference>` : ''}
+
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      ${supplierEndpoint ? `<cbc:EndpointID schemeID="9948">${xmlEscape(supplierEndpoint)}</cbc:EndpointID>` : ''}
+      <cac:PartyName><cbc:Name>${xmlEscape(supplier.name)}</cbc:Name></cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>${xmlEscape(supplier.address)}</cbc:StreetName>
+        <cac:Country><cbc:IdentificationCode>RS</cbc:IdentificationCode></cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>${xmlEscape(supplierCompanyIdVat || supplier.pib)}</cbc:CompanyID>
+        <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>${xmlEscape(supplier.name)}</cbc:RegistrationName>
+        <cbc:CompanyID>${xmlEscape(supplier.mb)}</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      ${customerEndpoint ? `<cbc:EndpointID schemeID="9948">${xmlEscape(customerEndpoint)}</cbc:EndpointID>` : ''}
+      <cac:PartyName><cbc:Name>${xmlEscape(client.name || '')}</cbc:Name></cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>${xmlEscape(client.address || '')}</cbc:StreetName>
+        <cac:Country><cbc:IdentificationCode>RS</cbc:IdentificationCode></cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>${xmlEscape(customerCompanyIdVat || client.pib || '')}</cbc:CompanyID>
+        <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>${xmlEscape(client.name || '')}</cbc:RegistrationName>
+        <cbc:CompanyID>${xmlEscape(client.mb || '')}</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+
+  <cac:Delivery>
+    <cbc:ActualDeliveryDate>${xmlEscape(issueDate || '')}</cbc:ActualDeliveryDate>
+  </cac:Delivery>
+
+  <cac:PaymentMeans>
+    <cbc:PaymentMeansCode>30</cbc:PaymentMeansCode>
+    <cbc:PaymentID>${xmlEscape(String(invoice?.reference || invoice?.number || '').trim() || 'REF')}</cbc:PaymentID>
+    <cac:PayeeFinancialAccount>
+      <cbc:ID>${xmlEscape(digitsOnly(supplier.iban) || supplier.iban || '')}</cbc:ID>
+    </cac:PayeeFinancialAccount>
+  </cac:PaymentMeans>
+
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="${currency}">${vatAmount.toFixed(2)}</cbc:TaxAmount>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="${currency}">${subtotal.toFixed(2)}</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="${currency}">${vatAmount.toFixed(2)}</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:ID>${vatCategoryId}</cbc:ID>
+        <cbc:Percent>${vatPercentStr}</cbc:Percent>
+        <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="${currency}">${subtotal.toFixed(2)}</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="${currency}">${subtotal.toFixed(2)}</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="${currency}">${total.toFixed(2)}</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="${currency}">${total.toFixed(2)}</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+
+${lineXml}
+</Invoice>`;
+
+            return xml;
+        }
+
+        function extractUblHeaderFields(ublXml) {
+            const xml = String(ublXml || '');
+            const grab = (tag) => {
+                const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`));
+                return m ? String(m[1] || '').trim() : '';
+            };
+            return {
+                id: grab('cbc:ID'),
+                issueDate: grab('cbc:IssueDate'),
+                taxPointDate: grab('cbc:TaxPointDate'),
+                dueDate: grab('cbc:DueDate')
+            };
+        }
+
+        async function getSalesInvoiceXmlById(invoiceId) {
+            const { baseUrl } = getEfakturaSettings();
+            const apiKey = ensureEfakturaApiKey();
+            if (!apiKey) throw new Error('Не задан ApiKey для eFaktura');
+            const url = `${baseUrl.replace(/\/+$/, '')}/api/publicApi/sales-invoice/xml?invoiceId=${encodeURIComponent(String(invoiceId || ''))}`;
+            const headers = { 'ApiKey': apiKey, 'Accept': 'application/xml' };
+            if (!window.SyncService || typeof window.SyncService.httpRequest !== 'function') {
+                throw new Error('HTTP слой недоступен (SyncService.httpRequest)');
+            }
+            const resp = await withTimeout(
+                window.SyncService.httpRequest(url, { method: 'GET', headers }),
+                30000,
+                'sales-invoice/xml'
+            );
+            const text = await resp.text().catch(() => '');
+            if (!resp.ok) {
+                throw new Error(`Ошибка получения XML (${resp.status}): ${text || 'Request failed'}`);
+            }
+            return text;
+        }
+
+        function monthToVatPeriod(dateStr) {
+            // ВАЖНО: dateStr приходит как YYYY-MM-DD. Парсим вручную, чтобы избежать timezone-сдвигов.
+            const parts = String(dateStr || '').split('-');
+            const month = parts.length >= 2 ? parseInt(parts[1], 10) : NaN; // 1-12
+            const m = Number.isFinite(month) ? (month - 1) : 0; // 0-11
+            const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            return months[m] || 'January';
+        }
+
+        async function recordOutboundVatForNonEfakturaInvoice(invoice) {
+            const { baseUrl } = getEfakturaSettings();
+            const apiKey = ensureEfakturaApiKey();
+            if (!apiKey) throw new Error('Не задан ApiKey для eFaktura');
+
+            const year = parseInt(String(invoice.date || '').split('-')[0], 10) || new Date().getFullYear();
+            const vatRate = Number(invoice.vatRate || 0);
+            const base20 = vatRate === 20 ? Number(invoice.subtotal || 0) : 0;
+            const vat20 = vatRate === 20 ? Number(invoice.vatAmount || 0) : 0;
+            const base10 = vatRate === 10 ? Number(invoice.subtotal || 0) : 0;
+            const vat10 = vatRate === 10 ? Number(invoice.vatAmount || 0) : 0;
+
+            const payload = {
+                documentNumber: String(invoice.number || ''),
+                turnoverDate: String(invoice.date || ''),
+                paymentDate: String(invoice.dueDate || invoice.date || ''),
+                documentType: 'Invoice',
+                year: year,
+                turnoverDescription: `Invoice outside eFaktura: ${invoice.number || ''}`,
+                turnoverAmount: Number(invoice.subtotal || 0),
+                vatBaseAmount20: base20,
+                vatBaseAmount10: base10,
+                vatAmount: Number(invoice.vatAmount || 0),
+                vatAmount10: vat10,
+                vatAmount20: vat20,
+                totalAmount: Number(invoice.total || 0),
+                vatDeductionRight: 'None',
+                relatedDocuments: [],
+                documentDirection: 'Outbound',
+                relatedPartyIdentifier: String(invoice.client?.pib || invoice.client?.mb || ''),
+                foreignDocument: false,
+                turnoverDescription20: vatRate === 20 ? 'Turnover 20%' : '',
+                turnoverDescription10: vatRate === 10 ? 'Turnover 10%' : '',
+                vatPeriod: monthToVatPeriod(invoice.date),
+                internalInvoiceOption: 'Turnover',
+                calculationNumber: null,
+                basisForPrepayment: null
+            };
+
+            const url = `${baseUrl.replace(/\/+$/, '')}/api/publicApi/vat-recording/individual`;
+            const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'ApiKey': apiKey };
+            const body = JSON.stringify(payload);
+
+            if (window.SyncService && typeof window.SyncService.httpRequest === 'function') {
+                const resp = await window.SyncService.httpRequest(url, { method: 'POST', headers, body });
+                const text = await resp.text().catch(() => '');
+                if (!resp.ok) {
+                    throw new Error(`Ошибка VAT recording (${resp.status}): ${text || 'Request failed'}`);
+                }
+                return JSON.parse(text);
+            }
+
+            const res = await fetch(url, { method: 'POST', headers, body });
+            const text = await res.text().catch(() => '');
+            if (!res.ok) {
+                throw new Error(`Ошибка VAT recording (${res.status}): ${text || res.statusText}`);
+            }
+            return JSON.parse(text);
+        }
+
+        async function sendCurrentRacunToEfaktura() {
+            try {
+                notifyUser('⏳ Отправка в eFaktura: старт...', 'info');
+
+                if (!currentInvoiceData || currentInvoiceData.documentType !== 'racun') {
+                    notifyUser('Сначала создайте рачун (кнопка "Создать рачун").', 'danger');
+                    return;
+                }
+
+                const { baseUrl } = getEfakturaSettings();
+                const apiKey = ensureEfakturaApiKey();
+                if (!apiKey) {
+                    notifyUser('Не задан ApiKey eFaktura.', 'danger');
+                    return;
+                }
+
+                // Проверяем клиента в eFaktura
+                if (!currentInvoiceData.client?.mb && !currentInvoiceData.client?.pib) {
+                    notifyUser('У клиента нет MB/PIB — невозможно проверить eFaktura и отправить документ.', 'danger');
+                    return;
+                }
+
+                // (опционально) сверяем/обновляем название клиента по eFaktura перед отправкой
+                try {
+                    await withTimeout(
+                        maybeSuggestClientNameUpdateFromEfaktura(currentInvoiceData.client),
+                        25000,
+                        'maybeSuggestClientNameUpdateFromEfaktura'
+                    );
+                } catch (e) {
+                    console.warn('eFaktura name sync skipped:', e);
+                }
+
+                notifyUser('⏳ Проверяю регистрацию клиента в eFaktura...', 'info');
+                const regPayloadMain = {
+                    registrationNumber: digitsOnly(currentInvoiceData.client?.mb) || null,
+                    vatNumber: digitsOnly(currentInvoiceData.client?.pib) || null,
+                    jbkjs: null
+                };
+                const reg = await withTimeout(
+                    checkClientRegisteredOnEfaktura(currentInvoiceData.client),
+                    20000,
+                    'CheckIfCompanyRegisteredOnEfaktura'
+                );
+                if (!isEfakturaRegisteredCompanyDto(reg)) {
+                    const clientName = currentInvoiceData.client?.name || 'клиент';
+                    const mbSent = digitsOnly(currentInvoiceData.client?.mb) || '—';
+                    const pibSent = digitsOnly(currentInvoiceData.client?.pib) || '—';
+
+                    const apiHint =
+                        `\n\nSwagger (Public API V1): POST /api/publicApi/Company/CheckIfCompanyRegisteredOnEfaktura` +
+                        `\nТело запроса (CompanyAccountIdentificationDto): ${JSON.stringify(regPayloadMain)}` +
+                        `\nОтвет (CompanyAccountOnEfAkturaDto): ${JSON.stringify(reg)}`;
+
+                    // Дополнительная диагностика: есть ли MB в справочнике компаний (getAllCompanies)
+                    let registryHint = '';
+                    let regMbOnly = null;
+                    let regPibOnly = null;
+                    let regPibFromRegistry = '';
+                    let directoryRecordFound = false;
+                    try {
+                        const rec = await withTimeout(
+                            getEfakturaCompanyRecordByMB(mbSent),
+                            65000,
+                            'registry lookup by MB'
+                        );
+                        if (rec) {
+                            directoryRecordFound = true;
+                            const regName = String(rec?.Name || '').trim();
+                            const regMb = digitsOnly(rec?.RegistrationCode) || mbSent;
+                            regPibFromRegistry = extractPossiblePibFromCompanyRecord(rec);
+                            const extraBits = [];
+                            // Пытаемся вывести парочку полезных полей, если они есть
+                            if (rec?.Status) extraBits.push(`Status=${rec.Status}`);
+                            if (rec?.VatNumber) extraBits.push(`PIB=${digitsOnly(rec.VatNumber) || rec.VatNumber}`);
+                            if (rec?.TaxNumber) extraBits.push(`TaxNumber=${digitsOnly(rec.TaxNumber) || rec.TaxNumber}`);
+                            registryHint =
+                                `\n\nСправочник компаний (getAllCompanies): MB=${regMb}` +
+                                (regName ? `, Name="${regName}"` : '') +
+                                (extraBits.length ? `, ${extraBits.join(', ')}` : '');
+
+                            if (regPibFromRegistry) {
+                                registryHint += `\nPIB в справочнике: ${regPibFromRegistry}`;
+                            }
+                        } else if (mbSent !== '—') {
+                            registryHint = `\n\nСправочник компаний (getAllCompanies): MB=${mbSent} не найден.`;
+                        }
+                    } catch (e) {
+                        console.warn('Registry hint failed:', e);
+                    }
+
+                    // Проверяем отдельно: проходит ли регистрация по MB без PIB, и по PIB без MB
+                    try {
+                        if (mbSent !== '—') {
+                            regMbOnly = await withTimeout(
+                                checkClientRegisteredOnEfaktura(currentInvoiceData.client, { mb: mbSent, pib: '' }),
+                                20000,
+                                'CheckIfCompanyRegisteredOnEfaktura (MB only)'
+                            );
+                        }
+                        if (pibSent !== '—') {
+                            regPibOnly = await withTimeout(
+                                checkClientRegisteredOnEfaktura(currentInvoiceData.client, { mb: '', pib: pibSent }),
+                                20000,
+                                'CheckIfCompanyRegisteredOnEfaktura (PIB only)'
+                            );
+                        }
+                    } catch (e) {
+                        console.warn('MB/PIB split check failed:', e);
+                    }
+
+                    const splitHint =
+                        `\n\nРаздельная проверка идентификаторов:` +
+                        `\n- Только MB (${mbSent}): ${isEfakturaRegisteredCompanyDto(regMbOnly) ? 'OK' : 'НЕ OK'}` +
+                        `\n- Только PIB (${pibSent}): ${isEfakturaRegisteredCompanyDto(regPibOnly) ? 'OK' : 'НЕ OK'}` +
+                        (regPibFromRegistry
+                            ? `\n\nСверка PIB: в карточке=${pibSent}, в справочнике=${regPibFromRegistry}` +
+                              (pibSent !== '—' && regPibFromRegistry && pibSent !== regPibFromRegistry ? ' (НЕ СОВПАДАЕТ)' : ' (совпадает)')
+                            : '');
+
+                    const msg =
+                        `${clientName} не зарегистрирован в eFaktura (по проверке регистрации eFaktura). ` +
+                        `(проверка по MB/PIB: MB=${mbSent}, PIB=${pibSent})\n\n` +
+                        `Рачун нельзя отправить в eFaktura.\n\n` +
+                        `Важно: "getAllCompanies" — это справочник компаний. Компания может присутствовать в справочнике, даже если она не зарегистрирована/не активна в eFaktura.\n\n` +
+                        `Если нужно “декларировать НДС” по такому счету через этот же API, ` +
+                        `обычный путь — создать Individual VAT recording (vat-recording/individual) как Outbound Invoice.` +
+                        apiHint +
+                        registryHint +
+                        splitHint;
+
+                    // Если компания есть в справочнике, но CheckIfCompanyRegisteredOnEfaktura = false,
+                    // даем пользователю возможность попробовать отправить документ напрямую.
+                    if (directoryRecordFound) {
+                        const proceed = confirm(
+                            msg +
+                            `\n\nКомпания найдена в справочнике eFaktura, но проверка "активного аккаунта" вернула НЕ OK.` +
+                            `\nПопробовать отправить UBL в eFaktura всё равно?`
+                        );
+                        if (proceed) {
+                            notifyUser('⏳ Отправляю UBL в eFaktura (без блокировки по проверке регистрации)...', 'info');
+                            // Переходим к отправке как в обычном сценарии ниже
+                        } else {
+                            const doVat = confirm(msg + '\n\nСоздать Individual VAT recording сейчас?');
+                            if (doVat) {
+                                const vatRes = await withTimeout(
+                                    recordOutboundVatForNonEfakturaInvoice(currentInvoiceData),
+                                    25000,
+                                    'vat-recording/individual'
+                                );
+                                notifyUser(`VAT recording создан (ID: ${vatRes?.individualVatId ?? '—'}).`, 'success');
+                            } else {
+                                notifyUser(msg, 'warning');
+                            }
+                            return;
+                        }
+                    } else {
+                    const doVat = confirm(msg + '\n\nСоздать Individual VAT recording сейчас?');
+                    if (doVat) {
+                        const vatRes = await withTimeout(
+                            recordOutboundVatForNonEfakturaInvoice(currentInvoiceData),
+                            25000,
+                            'vat-recording/individual'
+                        );
+                        notifyUser(`VAT recording создан (ID: ${vatRes?.individualVatId ?? '—'}).`, 'success');
+                    } else {
+                        notifyUser(msg, 'warning');
+                    }
+                    return;
+                    }
+                }
+
+                // Собираем UBL и отправляем
+                // Обновляем данные "отпремнице" из UI (если есть)
+                try {
+                    const numEl = document.getElementById('efakturaOtpremnicaNumber');
+                    if (numEl) {
+                        const num = String(numEl.value || '').trim();
+                        currentInvoiceData.efakturaOtpremnica = currentInvoiceData.efakturaOtpremnica || {};
+                        currentInvoiceData.efakturaOtpremnica.number = num;
+                    }
+                } catch {}
+
+                const ublXml = buildSalesInvoiceUblXml(currentInvoiceData);
+                const ublHdr = extractUblHeaderFields(ublXml);
+                const localId = String(currentInvoiceData?.number || '').trim();
+                const localIssueDate = String(currentInvoiceData?.date || '').trim();
+                if (localId && ublHdr.id && ublHdr.id !== localId) {
+                    notifyUser(
+                        `ОШИБКА: Несовпадение номера при отправке в eFaktura.\n` +
+                        `В данных рачуна: ${localId}\n` +
+                        `В UBL (cbc:ID): ${ublHdr.id}\n\n` +
+                        `Отправка остановлена, чтобы не перезаписать чужой документ в eFaktura.`,
+                        'danger'
+                    );
+                    return;
+                }
+                if (localIssueDate && ublHdr.issueDate && ublHdr.issueDate !== localIssueDate) {
+                    notifyUser(
+                        `ОШИБКА: Несовпадение даты при отправке в eFaktura.\n` +
+                        `В данных рачуна: ${localIssueDate}\n` +
+                        `В UBL (cbc:IssueDate): ${ublHdr.issueDate}\n\n` +
+                        `Отправка остановлена, чтобы не создать/изменить документ с неверной датой.`,
+                        'danger'
+                    );
+                    return;
+                }
+
+                const url = `${baseUrl.replace(/\/+$/, '')}/api/publicApi/sales-invoice/ubl`;
+                const headers = { 'Content-Type': 'application/xml', 'Accept': 'application/json', 'ApiKey': apiKey };
+                const requestId =
+                    (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+                        ? crypto.randomUUID()
+                        : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+                const urlWithParams = `${url}?requestId=${encodeURIComponent(requestId)}&executeValidation=true`;
+
+                // Через Rust http_request (через SyncService) — чтобы не упираться в CORS и увидеть точный ответ.
+                if (window.SyncService && typeof window.SyncService.httpRequest === 'function') {
+                    notifyUser('⏳ Отправляю UBL в eFaktura...', 'info');
+                    const resp = await withTimeout(
+                        window.SyncService.httpRequest(urlWithParams, { method: 'POST', headers, body: ublXml }),
+                        30000,
+                        'sales-invoice/ubl'
+                    );
+                    const text = await resp.text().catch(() => '');
+                    if (!resp.ok) {
+                        throw new Error(`Ошибка отправки в eFaktura (${resp.status}): ${text || 'Request failed'}`);
+                    }
+                    let parsed = null;
+                    try { parsed = JSON.parse(text); } catch {}
+                    notifyUser(`Рачун отправлен в eFaktura. Ответ: ${parsed ? JSON.stringify(parsed) : text}`, 'success');
+
+                    // Пост-проверка: сверяем что реально хранится в eFaktura под SalesInvoiceId
+                    try {
+                        const sid = parsed?.SalesInvoiceId ?? parsed?.salesInvoiceId ?? parsed?.InvoiceId ?? parsed?.invoiceId;
+                        if (sid) {
+                            const efXml = await getSalesInvoiceXmlById(sid);
+                            const efHdr = extractUblHeaderFields(efXml);
+                            if (efHdr?.id && localId && efHdr.id !== localId) {
+                                notifyUser(
+                                    `⚠️ ВНИМАНИЕ: eFaktura вернула SalesInvoiceId=${sid}, но XML в eFaktura имеет cbc:ID=${efHdr.id} (ожидали ${localId}).\n` +
+                                    `Проверьте в eFaktura, что отправился нужный документ.`,
+                                    'warning'
+                                );
+                            }
+                            if (efHdr?.issueDate && localIssueDate && efHdr.issueDate !== localIssueDate) {
+                                notifyUser(
+                                    `⚠️ ВНИМАНИЕ: XML в eFaktura имеет IssueDate=${efHdr.issueDate} (ожидали ${localIssueDate}).`,
+                                    'warning'
+                                );
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Post-check failed:', e);
+                    }
+                    return;
+                }
+
+                notifyUser('⏳ Отправляю UBL в eFaktura...', 'info');
+                const res = await fetch(urlWithParams, { method: 'POST', headers, body: ublXml });
+                const text = await res.text().catch(() => '');
+                if (!res.ok) {
+                    throw new Error(`Ошибка отправки в eFaktura (${res.status}): ${text || res.statusText}`);
+                }
+                let parsed = null;
+                try { parsed = JSON.parse(text); } catch {}
+                notifyUser(`Рачун отправлен в eFaktura. Ответ: ${parsed ? JSON.stringify(parsed) : text}`, 'success');
+
+            } catch (e) {
+                console.error('sendCurrentRacunToEfaktura error:', e);
+                notifyUser('Ошибка eFaktura: ' + (e?.message || e), 'danger');
+            }
         }
 
         function generateRacunHTML(invoice) {
@@ -16397,7 +17714,7 @@
                 showAlert('Ошибка сохранения отпремницы!', 'danger');
                 return;
             }
-            
+
             updateDeliveriesList();
             updateDeliveryClientFilter();
             
@@ -16991,6 +18308,7 @@
             updateRevenueChart(filteredInvoices);
             updateProductsChart(filteredInvoices);
             updateCategoriesChart(filteredInvoices);
+            updateMunicipalitiesChart(filteredInvoices);
             updateSubcategoriesChart(filteredInvoices);
             updateClientsChart(filteredInvoices);
             updateClientReport();
@@ -17197,6 +18515,99 @@
             });
             chartHTML += '</div>';
             chartEl.innerHTML = chartHTML;
+        }
+
+        function getInvoiceMunicipalityInfo(invoice) {
+            const city = invoice?.client?.city || invoice?.clientCity || '';
+            const municipality =
+                invoice?.client?.municipality ||
+                invoice?.clientMunicipality ||
+                invoice?.municipality ||
+                '';
+
+            if (municipality) {
+                return { city: city || '', municipality };
+            }
+
+            const mb = invoice?.client?.mb || invoice?.clientMB || invoice?.clientId;
+            if (mb && Array.isArray(window.clients)) {
+                const c = window.clients.find(x => x?.mb === mb || String(x?.id) === String(mb));
+                if (c?.municipality) {
+                    return { city: c.city || '', municipality: c.municipality };
+                }
+                // fallback parse from address "City, Municipality, Street..."
+                if (c?.address && typeof c.address === 'string') {
+                    const parts = c.address.split(',').map(s => s.trim()).filter(Boolean);
+                    if (parts.length >= 2) return { city: parts[0] || '', municipality: parts[1] || '' };
+                }
+            }
+
+            const addr = invoice?.client?.address || invoice?.clientAddress || '';
+            if (addr && typeof addr === 'string') {
+                const parts = addr.split(',').map(s => s.trim()).filter(Boolean);
+                if (parts.length >= 2) return { city: parts[0] || '', municipality: parts[1] || '' };
+            }
+
+            return { city: '', municipality: 'Не указано' };
+        }
+
+        function updateMunicipalitiesChart(invoices) {
+            const chartEl = document.getElementById('municipalitiesChart');
+            if (!chartEl) return;
+
+            const map = {};
+            (invoices || []).forEach(inv => {
+                const info = getInvoiceMunicipalityInfo(inv);
+                const key = `${info.city || ''}|||${info.municipality || 'Не указано'}`;
+                if (!map[key]) {
+                    map[key] = { city: info.city || '', municipality: info.municipality || 'Не указано', revenue: 0, invoices: 0 };
+                }
+                map[key].revenue += (inv.total || 0);
+                map[key].invoices += 1;
+            });
+
+            const rows = Object.values(map).sort((a, b) => b.revenue - a.revenue);
+            if (rows.length === 0) {
+                chartEl.innerHTML = '<div style="text-align: center; padding: 50px; color: #666;">Нет данных за выбранный период</div>';
+                return;
+            }
+
+            const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
+            const maxRevenue = rows[0].revenue || 1;
+
+            let html = '<div style="padding: 20px; max-height: 520px; overflow: auto;">';
+            html += `
+                <div style="background: #f8fafc; border-radius: 12px; padding: 15px; margin-bottom: 20px; border: 1px solid #e3e8ef;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div><span style="font-size: 16px; font-weight: bold; color: #2c3e50;">Всего общин: ${rows.length}</span></div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 14px; color: #666;">Общая выручка: <span style="font-weight: bold; color: #28a745;">${formatPriceWithCurrency(totalRevenue)}</span></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            rows.forEach((r, idx) => {
+                const pct = (r.revenue / maxRevenue) * 100;
+                const pctTotal = totalRevenue > 0 ? (r.revenue / totalRevenue * 100).toFixed(1) : '0.0';
+                const title = r.city ? `${r.city} — ${r.municipality}` : r.municipality;
+                html += `
+                    <div style="margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; align-items: center;">
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <span style="font-size: 12px; color: #888; min-width: 34px;">#${idx + 1}</span>
+                                <span style="font-weight: bold; font-size: 14px;">${title}</span>
+                            </div>
+                            <span style="font-size: 14px; white-space: nowrap;">${formatPriceWithCurrency(r.revenue)} <span style="color:#888; font-size:12px;">(${pctTotal}%)</span> <span style="color:#666;">• ${r.invoices} инв.</span></span>
+                        </div>
+                        <div style="width: 100%; height: 10px; background: #e9ecef; border-radius: 5px;">
+                            <div style="width: ${pct}%; height: 100%; background: linear-gradient(to right, #114A9F, #20c997); border-radius: 5px;"></div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            chartEl.innerHTML = html;
         }
 
         function updateSubcategoriesChart(invoices) {
@@ -17746,108 +19157,300 @@
         // Экспорт статистики продаж товаров в Excel
         function exportProductsToExcel() {
             console.log('Экспорт статистики продаж товаров в Excel');
-            
-            // Получаем отфильтрованные инвойсы
-            const period = document.getElementById('analyticsPeriod').value;
-            let filteredInvoices = confirmedInvoices;
-            
-            if (period !== 'all') {
-                const now = new Date();
-                let startDate;
-                
-                if (period === 'today') {
-                    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                } else if (period === 'week') {
-                    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                } else if (period === 'month') {
-                    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                } else if (period === 'year') {
-                    startDate = new Date(now.getFullYear(), 0, 1);
+
+            try {
+                if (typeof XLSX === 'undefined' || !XLSX?.utils?.book_new) {
+                    showAlert('Ошибка экспорта: библиотека XLSX не загружена', 'danger');
+                    return;
                 }
-                
-                filteredInvoices = confirmedInvoices.filter(inv => new Date(inv.date) >= startDate);
-            }
+
+                // Берём период так же, как у экспорта по субкатегориям (вкладка Статистика)
+                const fromDate = document.getElementById('statsFromDate')?.value;
+                const toDate = document.getElementById('statsToDate')?.value;
+                let filteredInvoices = [...confirmedInvoices];
+
+                if (fromDate || toDate) {
+                    filteredInvoices = confirmedInvoices.filter(inv => {
+                        const invDate = new Date(inv.date);
+                        if (fromDate && toDate) {
+                            const from = new Date(fromDate);
+                            const to = new Date(toDate);
+                            to.setHours(23, 59, 59, 999);
+                            return invDate >= from && invDate <= to;
+                        } else if (fromDate) {
+                            return invDate >= new Date(fromDate);
+                        } else if (toDate) {
+                            const to = new Date(toDate);
+                            to.setHours(23, 59, 59, 999);
+                            return invDate <= to;
+                        }
+                        return true;
+                    });
+                }
+
+                // Дедупликация (как в updateStatistics), чтобы не удваивать продажи
+                if (typeof deduplicateInvoices === 'function') {
+                    filteredInvoices = deduplicateInvoices(filteredInvoices);
+                }
             
-            // Собираем данные о товарах
+            const toNumber = (v) => {
+                if (v === null || v === undefined) return 0;
+                if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+                if (typeof v === 'string') {
+                    const n = parseFloat(v.replace(/\s+/g, '').replace(',', '.'));
+                    return Number.isFinite(n) ? n : 0;
+                }
+                return 0;
+            };
+
+            const getWeightPerUnitGrams = (item) => {
+                const w = toNumber(item?.product?.weight ?? item?.weight ?? item?.productWeight);
+                return w > 0 ? w : null;
+            };
+
+            // Собираем данные о товарах (агрегация по товару)
             const productData = {};
             filteredInvoices.forEach(invoice => {
-                invoice.items.forEach(item => {
-                    const key = item.product.code;
-                    if (!productData[key]) {
-                        productData[key] = {
-                            code: item.product.code,
-                            name: item.product.name,
-                            category: item.product.category || 'Не указана',
+                (invoice.items || []).forEach(item => {
+                    const code = item?.product?.code || item?.productId || item?.product?.internalCode || 'Unknown';
+                    const name = item?.product?.name || item?.productName || 'Unknown';
+                    const category = item?.product?.category || 'Не указана';
+                    const quantity = toNumber(item?.quantity);
+                    const revenue = toNumber(item?.amount ?? item?.total ?? (toNumber(item?.price) * quantity));
+                    const weightPerUnit = getWeightPerUnitGrams(item);
+
+                    if (!productData[code]) {
+                        productData[code] = {
+                            code,
+                            name,
+                            category,
                             quantity: 0,
-                            revenue: 0
+                            revenue: 0,
+                            weightPerUnit
                         };
                     }
-                    productData[key].quantity += item.quantity;
-                    productData[key].revenue += item.amount;
+                    productData[code].quantity += quantity;
+                    productData[code].revenue += revenue;
                 });
             });
-            
-            // Сортируем по выручке
-            const sortedProducts = Object.values(productData).sort((a, b) => b.revenue - a.revenue);
-            
-            if (sortedProducts.length === 0) {
+
+            const sortedAll = Object.values(productData).sort((a, b) => b.revenue - a.revenue);
+
+            if (sortedAll.length === 0) {
                 showAlert('Нет данных для экспорта!', 'warning');
                 return;
             }
+
+            const makeRows = (products) => {
+                const rows = products.map((p, index) => {
+                    const qty = toNumber(p.quantity);
+                    const rev = toNumber(p.revenue);
+                    const revPerUnit = qty > 0 ? (rev / qty) : 0;
+                    const w = (typeof p.weightPerUnit === 'number' && p.weightPerUnit > 0) ? p.weightPerUnit : null;
+                    const totalW = w ? (w * qty) : null;
+                    return {
+                        '№': index + 1,
+                        'Код товара': p.code,
+                        'Название': p.name,
+                        'Категория': p.category,
+                        'Кол-во (ед.)': qty,
+                        'Вес / ед. (г)': w ? w : '',
+                        'Суммарный вес (г)': totalW ? totalW : '',
+                        'Доход всего (RSD)': rev.toFixed(2),
+                        'Доход / ед. (RSD)': revPerUnit.toFixed(2)
+                    };
+                });
+
+                const totalQty = products.reduce((s, p) => s + toNumber(p.quantity), 0);
+                const totalRev = products.reduce((s, p) => s + toNumber(p.revenue), 0);
+                const totalWeight = products.reduce((s, p) => {
+                    const qty = toNumber(p.quantity);
+                    const w = (typeof p.weightPerUnit === 'number' && p.weightPerUnit > 0) ? p.weightPerUnit : null;
+                    return s + (w ? (w * qty) : 0);
+                }, 0);
+
+                rows.push({
+                    '№': '',
+                    'Код товара': '',
+                    'Название': 'ИТОГО:',
+                    'Категория': '',
+                    'Кол-во (ед.)': totalQty,
+                    'Вес / ед. (г)': '',
+                    'Суммарный вес (г)': totalWeight > 0 ? totalWeight : '',
+                    'Доход всего (RSD)': totalRev.toFixed(2),
+                    'Доход / ед. (RSD)': ''
+                });
+
+                return rows;
+            };
+
+            const exportOne = (products, sheetName, fileName) => {
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.json_to_sheet(makeRows(products));
+                ws['!cols'] = [
+                    { wch: 5 },   // №
+                    { wch: 15 },  // Код товара
+                    { wch: 40 },  // Название
+                    { wch: 20 },  // Категория
+                    { wch: 12 },  // Кол-во
+                    { wch: 14 },  // Вес/ед
+                    { wch: 18 },  // Сумм. вес
+                    { wch: 18 },  // Доход всего
+                    { wch: 18 }   // Доход/ед
+                ];
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+                XLSX.writeFile(wb, fileName);
+            };
             
-            // Подготавливаем данные для Excel
-            const excelData = sortedProducts.map((product, index) => ({
-                '№': index + 1,
-                'Код товара': product.code,
-                'Название': product.name,
-                'Категория': product.category,
-                'Количество': product.quantity,
-                'Выручка (RSD)': product.revenue.toFixed(2)
-            }));
-            
-            // Добавляем итоговую строку
-            const totalQuantity = sortedProducts.reduce((sum, p) => sum + p.quantity, 0);
-            const totalRevenue = sortedProducts.reduce((sum, p) => sum + p.revenue, 0);
-            excelData.push({
-                '№': '',
-                'Код товара': '',
-                'Название': 'ИТОГО:',
-                'Категория': '',
-                'Количество': totalQuantity,
-                'Выручка (RSD)': totalRevenue.toFixed(2)
-            });
-            
-            // Создаем workbook и worksheet
+            // Один файл Excel, но 2 листа: ТОП-10 и ВСЕ продажи (по товарам).
+            // В WebView/Tauri множественные download подряд часто блокируются.
+            const dateTag = new Date().toLocaleDateString('ru-RU').replace(/\./g, '-');
+            const top10 = sortedAll.slice(0, 10);
+
             const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.json_to_sheet(excelData);
-            
-            // Настраиваем ширину колонок
-            ws['!cols'] = [
+            const wsTop = XLSX.utils.json_to_sheet(makeRows(top10));
+            const wsAll = XLSX.utils.json_to_sheet(makeRows(sortedAll));
+
+            const cols = [
                 { wch: 5 },   // №
                 { wch: 15 },  // Код товара
                 { wch: 40 },  // Название
                 { wch: 20 },  // Категория
-                { wch: 12 },  // Количество
-                { wch: 18 }   // Выручка
+                { wch: 12 },  // Кол-во
+                { wch: 14 },  // Вес/ед
+                { wch: 18 },  // Сумм. вес
+                { wch: 18 },  // Доход всего
+                { wch: 18 }   // Доход/ед
             ];
-            
-            // Добавляем worksheet в workbook
-            XLSX.utils.book_append_sheet(wb, ws, 'Статистика продаж');
-            
-            // Формируем имя файла с датой
-            const periodNames = {
-                'all': 'Все_время',
-                'today': 'Сегодня',
-                'week': 'Неделя',
-                'month': 'Месяц',
-                'year': 'Год'
-            };
-            const fileName = `Статистика_продаж_${periodNames[period]}_${new Date().toLocaleDateString('ru-RU').replace(/\./g, '-')}.xlsx`;
-            
-            // Скачиваем файл
+            wsTop['!cols'] = cols;
+            wsAll['!cols'] = cols;
+
+            XLSX.utils.book_append_sheet(wb, wsTop, 'Топ 10');
+            XLSX.utils.book_append_sheet(wb, wsAll, 'Все продажи');
+
+            let periodStr = '';
+            if (fromDate && toDate) {
+                periodStr = `${fromDate}_${toDate}`;
+            } else if (fromDate) {
+                periodStr = `от_${fromDate}`;
+            } else if (toDate) {
+                periodStr = `до_${toDate}`;
+            } else {
+                periodStr = 'Все_время';
+            }
+            const fileName = `Продажи_по_товарам_${periodStr}_${dateTag}.xlsx`;
             XLSX.writeFile(wb, fileName);
-            
-            showAlert('Статистика продаж экспортирована в Excel!', 'success');
+
+            showAlert('Экспорт в Excel выполнен (2 листа: ТОП-10 и ВСЕ продажи).', 'success');
+            } catch (e) {
+                console.error('❌ exportProductsToExcel failed', e);
+                showAlert('Ошибка экспорта в Excel: ' + (e?.message || e), 'danger');
+            }
+        }
+
+        // Экспорт статистики продаж по общинам (районам) в Excel (все общины)
+        function exportMunicipalitiesToExcel() {
+            console.log('Экспорт статистики продаж по общинам в Excel');
+
+            try {
+                if (typeof XLSX === 'undefined' || !XLSX?.utils?.book_new) {
+                    showAlert('Ошибка экспорта: библиотека XLSX не загружена', 'danger');
+                    return;
+                }
+
+                const fromDate = document.getElementById('statsFromDate')?.value;
+                const toDate = document.getElementById('statsToDate')?.value;
+                let filteredInvoices = [...confirmedInvoices];
+
+                if (fromDate || toDate) {
+                    filteredInvoices = confirmedInvoices.filter(inv => {
+                        const invDate = new Date(inv.date);
+                        if (fromDate && toDate) {
+                            const from = new Date(fromDate);
+                            const to = new Date(toDate);
+                            to.setHours(23, 59, 59, 999);
+                            return invDate >= from && invDate <= to;
+                        } else if (fromDate) {
+                            return invDate >= new Date(fromDate);
+                        } else if (toDate) {
+                            const to = new Date(toDate);
+                            to.setHours(23, 59, 59, 999);
+                            return invDate <= to;
+                        }
+                        return true;
+                    });
+                }
+
+                if (typeof deduplicateInvoices === 'function') {
+                    filteredInvoices = deduplicateInvoices(filteredInvoices);
+                }
+
+                const map = {};
+                filteredInvoices.forEach(inv => {
+                    const info = getInvoiceMunicipalityInfo(inv);
+                    const city = info.city || '';
+                    const municipality = info.municipality || 'Не указано';
+                    const key = `${city}|||${municipality}`;
+                    if (!map[key]) {
+                        map[key] = { city, municipality, revenue: 0, invoices: 0 };
+                    }
+                    map[key].revenue += (inv.total || 0);
+                    map[key].invoices += 1;
+                });
+
+                const rows = Object.values(map).sort((a, b) => b.revenue - a.revenue);
+                if (rows.length === 0) {
+                    showAlert('Нет данных для экспорта!', 'warning');
+                    return;
+                }
+
+                const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
+                const totalInvoices = rows.reduce((s, r) => s + r.invoices, 0);
+
+                const excelData = rows.map((r, idx) => ({
+                    '№': idx + 1,
+                    'Город': r.city || '',
+                    'Община (район)': r.municipality,
+                    'Кол-во инвойсов': r.invoices,
+                    'Выручка (RSD)': r.revenue.toFixed(2),
+                    '% от общей выручки': totalRevenue > 0 ? ((r.revenue / totalRevenue) * 100).toFixed(2) + '%' : '0.00%'
+                }));
+
+                excelData.push({
+                    '№': '',
+                    'Город': '',
+                    'Община (район)': 'ИТОГО:',
+                    'Кол-во инвойсов': totalInvoices,
+                    'Выручка (RSD)': totalRevenue.toFixed(2),
+                    '% от общей выручки': '100%'
+                });
+
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.json_to_sheet(excelData);
+                ws['!cols'] = [
+                    { wch: 5 },
+                    { wch: 18 },
+                    { wch: 26 },
+                    { wch: 16 },
+                    { wch: 18 },
+                    { wch: 20 }
+                ];
+                XLSX.utils.book_append_sheet(wb, ws, 'Продажи по общинам');
+
+                let periodStr = '';
+                if (fromDate && toDate) periodStr = `${fromDate}_${toDate}`;
+                else if (fromDate) periodStr = `от_${fromDate}`;
+                else if (toDate) periodStr = `до_${toDate}`;
+                else periodStr = 'Все_время';
+
+                const fileName = `Продажи_по_общинам_${periodStr}_${new Date().toLocaleDateString('ru-RU').replace(/\\./g, '-')}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+
+                showAlert(`Статистика по общинам экспортирована! Общин: ${rows.length}`, 'success');
+            } catch (e) {
+                console.error('❌ exportMunicipalitiesToExcel failed', e);
+                showAlert('Ошибка экспорта в Excel: ' + (e?.message || e), 'danger');
+            }
         }
 
         // Экспорт статистики по категориям в Excel
@@ -18247,7 +19850,10 @@
             let listHTML = '';
             invoices.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach((invoice, index) => {
                 const date = new Date(invoice.date).toLocaleDateString('sr-RS');
-                const originalIndex = confirmedInvoices.findIndex(inv => inv.number === invoice.number);
+                const originalIndex = confirmedInvoices.findIndex(inv =>
+                    inv.number === invoice.number
+                    || stripInvoiceNumberPrefix(inv.number || '') === stripInvoiceNumberPrefix(invoice.number || '')
+                );
                 const isDelivered = invoice.delivered || false;
                 const isPaid = invoice.paid || false;
                 
@@ -18276,8 +19882,14 @@
         }
 
         async function toggleInvoiceStatus(invoiceNumber, statusType, isChecked) {
-            const invoice = confirmedInvoices.find(inv => inv.number === invoiceNumber);
+            const want = String(invoiceNumber || '').trim();
+            const invoice = confirmedInvoices.find(inv =>
+                inv.number === want
+                || inv.invoiceNumber === want || inv.invoice_number === want
+                || stripInvoiceNumberPrefix(inv.number || inv.invoiceNumber || inv.invoice_number) === stripInvoiceNumberPrefix(want)
+            );
             if (invoice) {
+                const changeTime = new Date().toISOString();
                 if (statusType === 'delivered') {
                     invoice.delivered = isChecked;
                     addLog(`Инвойс #${invoiceNumber} отмечен как ${isChecked ? 'доставленный' : 'недоставленный'}`);
@@ -18285,13 +19897,29 @@
                     invoice.paid = isChecked;
                     addLog(`Инвойс #${invoiceNumber} отмечен как ${isChecked ? 'оплаченный' : 'неоплаченный'}`);
                 }
-                // Сохраняем статус на устройстве через backend (SQLite), а не localStorage
+                
+                // ВАЖНО: фиксируем время изменения статуса для синхронизации в Skylight
+                invoice._syncModified = changeTime;
+                invoice._syncVersion = (invoice._syncVersion || 1) + 1;
+                if (!invoice._statusModifiedAt) invoice._statusModifiedAt = {};
+                invoice._statusModifiedAt[statusType] = changeTime;
+
+                const dbNumForStatus = invoice.invoiceNumber || invoice.invoice_number || invoice.number || want;
+                
+                // localStorage не используем для хранения paid/delivered (только SQLite).
+                // Держим актуальные массивы в памяти; если нужно, fallback-кэш сохранится без статусов через safeLocalStorage.
+                resyncConfirmedInvoicesAggregateFromSplits();
+                
+                // Также сохраняем в локальную SQLite базу (Tauri), если документ существует там
                 try {
-                    const paid = Boolean(invoice.paid);
-                    const delivered = Boolean(invoice.delivered);
-                    await InvoicesAPI.updatePaymentStatus(invoiceNumber, paid, delivered);
-                } catch (error) {
-                    console.error('❌ Ошибка сохранения статуса в локальную базу:', error);
+                    if (typeof InvoicesAPI !== 'undefined' && InvoicesAPI.updatePaymentStatus) {
+                        const paid = statusType === 'paid' ? isChecked : (invoice.paid || false);
+                        const delivered = statusType === 'delivered' ? isChecked : (invoice.delivered || false);
+                        await InvoicesAPI.updatePaymentStatus(dbNumForStatus, paid, delivered, invoice.documentType || null);
+                        console.log(`✅ SQLite: сохранены статусы для инвойса ${dbNumForStatus} paid=${paid}, delivered=${delivered}`);
+                    }
+                } catch (e) {
+                    console.log(`❌ SQLite: не удалось сохранить статусы для ${want}`, e);
                     showAlert('Не удалось сохранить статус в базе данных. Проверьте логи.', 'danger');
                 }
                 
@@ -19075,7 +20703,7 @@
             
             // Проверяем измененные пароли для встроенных пользователей
             const builtInPasswords = JSON.parse(localStorage.getItem('builtInPasswords') || '{}');
-            const builtInUsers = ['BrankoFND', 'тест', 'SVDA DOO'];
+            const builtInUsers = ['BrankoFND', 'тест', 'SVDA DOO', 'Pasha'];
             
             if (builtInUsers.includes(username)) {
                 // Проверяем измененный пароль (если был изменен)
@@ -19088,6 +20716,51 @@
                     return;
                 }
                 showStatus(`✅ Проверка пароля для ${username}: ${customPassword ? 'пользовательский' : 'стандартный'}`, '#00ff00');
+            }
+
+            // Pasha: локальная авторизация (не через window.api.auth)
+            if (username === 'Pasha') {
+                const expected = builtInPasswords['Pasha'] || 'pasha';
+                if (password !== expected) {
+                    showStatus('❌ Неверный пароль для Pasha', '#ff0000');
+                    document.getElementById('loginError').textContent = 'Неверный логин или пароль';
+                    document.getElementById('loginError').style.display = 'block';
+                    return;
+                }
+
+                const builtInPermissions = JSON.parse(localStorage.getItem('builtInPermissions') || '{}');
+                const perms = builtInPermissions['Pasha'] || {
+                    clients: true,
+                    products: true,
+                    warehouse: true,
+                    invoice: false,
+                    delivery: false,
+                    statistics: true,
+                    logs: true,
+                    canUploadData: false,
+                    editUsers: false
+                };
+
+                window.currentUser = {
+                    username: 'Pasha',
+                    isAdmin: false,
+                    userType: 'regular',
+                    permissions: perms
+                };
+
+                document.getElementById('loginForm').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                document.getElementById('loginError').style.display = 'none';
+
+                showStatus('📦 Загружаем данные из базы (Pasha)...', '#3b82f6');
+                await loadInitialData();
+
+                showStatus('🎨 Инициализируем интерфейс (Pasha)...', '#3b82f6');
+                initializeUserInterface();
+
+                addLog('Пользователь \"Pasha\" вошёл в систему (просмотр).');
+                showStatus('✅ Авторизация Pasha завершена успешно!', '#00ff00');
+                return;
             }
             
             // Если не найден в systemUsers, пробуем через Tauri API (админы и основные пользователи)
@@ -19115,7 +20788,7 @@
                 let apiPassword = password;
                 if (builtInUsers.includes(username) && builtInPasswords[username]) {
                     // Для измененного пароля отправляем оригинальный пароль в API
-                    const originalPasswords = { 'BrankoFND': 'admin', 'тест': 'тест', 'SVDA DOO': '22058282' };
+                    const originalPasswords = { 'BrankoFND': 'admin', 'тест': 'тест', 'SVDA DOO': '22058282', 'Pasha': 'pasha' };
                     apiPassword = originalPasswords[username] || password;
                 }
                 const user = await window.api.auth.login(username, apiPassword);
@@ -19498,6 +21171,7 @@
                     delivery: false,
                     statistics: false,
                     logs: false,
+                    canUploadData: false,
                     editUsers: false
                 } : {
                     // Обычные права доступа
@@ -19508,6 +21182,7 @@
                     statistics: true,
                     warehouse: true,
                     logs: false,
+                    canUploadData: false,
                     editUsers: false
                 },
                 createdAt: new Date().toISOString()
@@ -19563,6 +21238,23 @@
                     <div class="user-actions">
                         <button class="btn btn-primary" onclick="editUserPermissions('BrankoFND', true)">✏️ Изменить</button>
                         <button class="btn btn-danger" disabled title="Нельзя удалить администратора">Удалить</button>
+                    </div>
+                </div>
+            `;
+            
+            // Добавляем Pasha (просмотр всех данных, без выгрузки)
+            usersHTML += `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-avatar">PA</div>
+                        <div class="user-details">
+                            <h5>Pasha</h5>
+                            <p>Просмотр (без выгрузки/редактирования)</p>
+                        </div>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn btn-primary" onclick="editUserPermissions('Pasha', true)">✏️ Изменить</button>
+                        <button class="btn btn-danger" disabled title="Нельзя удалить встроенного пользователя">Удалить</button>
                     </div>
                 </div>
             `;
@@ -19768,6 +21460,21 @@
                     delivery: false,
                     statistics: false,
                     logs: false,
+                    canUploadData: false,
+                    editUsers: false
+                };
+            } else if (username === 'Pasha') {
+                const builtInPermissions = JSON.parse(localStorage.getItem('builtInPermissions') || '{}');
+                permissions = builtInPermissions[username] || {
+                    // Полный просмотр всех данных, без создания/редактирования и без документов
+                    clients: true,
+                    products: true,
+                    warehouse: true,
+                    invoice: false,
+                    delivery: false,
+                    statistics: true,
+                    logs: true,
+                    canUploadData: false,
                     editUsers: false
                 };
             } else {
@@ -19781,6 +21488,7 @@
                     delivery: true,
                     statistics: true,
                     logs: false,
+                    canUploadData: false,
                     editUsers: false
                 };
             }
@@ -19793,6 +21501,7 @@
             document.getElementById('perm_delivery').checked = permissions.delivery || false;
             document.getElementById('perm_statistics').checked = permissions.statistics || false;
             document.getElementById('perm_logs').checked = permissions.logs || false;
+            document.getElementById('perm_upload').checked = permissions.canUploadData || false;
             document.getElementById('perm_editUsers').checked = permissions.editUsers || false;
             
             // Блокируем права администратора для всех кроме BrankoFND
@@ -19836,6 +21545,7 @@
                 delivery: document.getElementById('perm_delivery').checked,
                 statistics: document.getElementById('perm_statistics').checked,
                 logs: document.getElementById('perm_logs').checked,
+                canUploadData: document.getElementById('perm_upload').checked,
                 editUsers: document.getElementById('perm_editUsers').checked
             };
             
@@ -19856,7 +21566,7 @@
                 passwordChanged = true;
             }
             
-            if (username === 'BrankoFND' || username === 'тест' || username === 'SVDA DOO') {
+            if (username === 'BrankoFND' || username === 'тест' || username === 'SVDA DOO' || username === 'Pasha') {
                 // Для встроенных пользователей сохраняем настройки отдельно
                 const builtInPermissions = JSON.parse(localStorage.getItem('builtInPermissions') || '{}');
                 builtInPermissions[username] = permissions;
@@ -19942,6 +21652,13 @@
                         tab.style.display = 'block';
                     }
                 });
+
+                // Pasha: скрываем вкладку "Документы" даже если она стандартная
+                if (window.currentUser?.username === 'Pasha') {
+                    document.querySelectorAll('.nav-tab').forEach(tab => {
+                        if ((tab.textContent || '').toLowerCase().includes('документ')) tab.style.display = 'none';
+                    });
+                }
             }
             
             // Скрываем кнопку логов если нет доступа
@@ -22491,6 +24208,8 @@
             }
         }
 
+        // (Удалено) openDeliveryByInvoiceNumber: убрали локальную реализацию подтягивания отпремницы
+
         function openLogsModal() {
             // Проверяем права доступа
             if (!window.currentUser || !window.currentUser.permissions.logs) {
@@ -22517,11 +24236,98 @@
             document.getElementById('syncApiKey').value = apiKey;
             document.getElementById('syncProjectUrl').value = projectUrl;
             document.getElementById('syncDatabaseName').value = databaseName;
+
+            // eFaktura settings
+            const efBaseUrl = localStorage.getItem('efakturaBaseUrl') || 'https://efaktura.mfin.gov.rs';
+            const efKey = localStorage.getItem('efakturaApiKey') || '';
+            const storedAuto = localStorage.getItem('efakturaAutoNameSync');
+            const efAuto = storedAuto === null ? true : storedAuto === 'true';
+            const efBaseEl = document.getElementById('efakturaBaseUrlInput');
+            const efKeyEl = document.getElementById('efakturaApiKeyInput');
+            const efAutoEl = document.getElementById('efakturaAutoNameSync');
+            if (efBaseEl) efBaseEl.value = efBaseUrl;
+            if (efKeyEl) efKeyEl.value = efKey;
+            if (efAutoEl) efAutoEl.checked = efAuto;
             
             // Обновляем статус
             updateSyncStatus();
+
+            // По умолчанию открываем SQLite вкладку
+            switchSyncTab('sqlite');
             
             document.getElementById('syncModal').style.display = 'block';
+        }
+
+        function switchSyncTab(tab) {
+            const sqliteTab = document.getElementById('syncTabSqlite');
+            const efTab = document.getElementById('syncTabEfaktura');
+            const btnSqlite = document.getElementById('syncTabBtnSqlite');
+            const btnEf = document.getElementById('syncTabBtnEfaktura');
+
+            const isEf = tab === 'efaktura';
+            if (sqliteTab) sqliteTab.style.display = isEf ? 'none' : 'block';
+            if (efTab) efTab.style.display = isEf ? 'block' : 'none';
+
+            if (btnSqlite) {
+                btnSqlite.className = isEf ? 'btn btn-secondary' : 'btn btn-primary';
+            }
+            if (btnEf) {
+                btnEf.className = isEf ? 'btn btn-primary' : 'btn btn-secondary';
+            }
+        }
+
+        function saveEfakturaSettings() {
+            const baseUrl = (document.getElementById('efakturaBaseUrlInput')?.value || '').trim() || 'https://efaktura.mfin.gov.rs';
+            const apiKey = (document.getElementById('efakturaApiKeyInput')?.value || '').trim();
+            const autoNameSync = !!document.getElementById('efakturaAutoNameSync')?.checked;
+
+            localStorage.setItem('efakturaBaseUrl', baseUrl);
+            localStorage.setItem('efakturaApiKey', apiKey);
+            localStorage.setItem('efakturaAutoNameSync', autoNameSync ? 'true' : 'false');
+
+            showAlert('✅ eFaktura настройки сохранены', 'success');
+        }
+
+        async function testEfakturaConnection() {
+            try {
+                const baseUrl = (document.getElementById('efakturaBaseUrlInput')?.value || '').trim() || 'https://efaktura.mfin.gov.rs';
+                const apiKey = (document.getElementById('efakturaApiKeyInput')?.value || '').trim();
+
+                if (!apiKey) {
+                    showAlert('Введите eFaktura ApiKey', 'warning');
+                    return;
+                }
+
+                const url = `${baseUrl.replace(/\/+$/, '')}/api/publicApi/getEfakturaVersion`;
+                const headers = { 'ApiKey': apiKey, 'Accept': 'application/json' };
+
+                // В Tauri WebView обычный fetch может упираться в CORS. Используем Rust http_request через SyncService, если доступно.
+                let ok = false;
+                let status = 0;
+                let bodyText = '';
+                if (window.SyncService && typeof window.SyncService.httpRequest === 'function') {
+                    const resp = await window.SyncService.httpRequest(url, { method: 'GET', headers });
+                    ok = !!resp.ok;
+                    status = resp.status || 0;
+                    bodyText = await resp.text().catch(() => '');
+                } else {
+                    const res = await fetch(url, { method: 'GET', headers });
+                    ok = res.ok;
+                    status = res.status;
+                    bodyText = await res.text().catch(() => '');
+                }
+
+                if (!ok) {
+                    throw new Error(`${status} ${bodyText || 'Request failed'}`);
+                }
+
+                let parsed = null;
+                try { parsed = JSON.parse(bodyText); } catch {}
+                showAlert('✅ eFaktura доступна' + (parsed ? ` (version: ${JSON.stringify(parsed)})` : ''), 'success');
+            } catch (e) {
+                console.error('testEfakturaConnection error:', e);
+                showAlert('❌ Ошибка eFaktura: ' + (e?.message || e), 'danger');
+            }
         }
         
         // Функции для логов синхронизации
@@ -23751,6 +25557,40 @@
             }
         }
         
+        /** Номер без префикса p/o — для сопоставления «1-21122025» с «p1-21122025» */
+        function stripInvoiceNumberPrefix(val) {
+            if (val === undefined || val === null) return '';
+            return String(val).trim().replace(/^[poPO]/, '');
+        }
+
+        /** Найти документ в confirmedPredracuns / confirmedRacuns по тому, что показывается в UI (#1-21122025 или p1-21122025) */
+        function findDocInArrayByDisplayNumber(docArray, docNumber) {
+            const want = String(docNumber || '').trim();
+            if (!want) return undefined;
+            const wantStrip = stripInvoiceNumberPrefix(want);
+            return docArray.find(d => {
+                const n = d.number != null ? String(d.number).trim() : '';
+                const inv = (d.invoiceNumber || d.invoice_number) != null ? String(d.invoiceNumber || d.invoice_number).trim() : '';
+                return n === want || inv === want
+                    || stripInvoiceNumberPrefix(n) === wantStrip
+                    || stripInvoiceNumberPrefix(inv) === wantStrip;
+            });
+        }
+
+        /** После правки статуса в predracun/racun обновляем агрегат confirmedInvoices в localStorage (иначе при перезапуске берётся устаревший JSON). */
+        function resyncConfirmedInvoicesAggregateFromSplits() {
+            try {
+                const preSet = new Set(confirmedPredracuns);
+                const racSet = new Set(confirmedRacuns);
+                const extras = confirmedInvoices.filter(inv => !preSet.has(inv) && !racSet.has(inv));
+                confirmedInvoices = [...confirmedPredracuns, ...confirmedRacuns, ...extras];
+                safeLocalStorage('set', 'confirmedInvoices', confirmedInvoices);
+                window.confirmedInvoices = confirmedInvoices;
+            } catch (e) {
+                console.warn('resyncConfirmedInvoicesAggregateFromSplits:', e);
+            }
+        }
+
         // Новая функция для кнопок статуса
         function toggleDocumentStatusButton(docType, docNumber, statusType, newValue) {
             console.log('═══════════════════════════════════════════════════════════');
@@ -23763,7 +25603,7 @@
             const docArray = docType === 'predracun' ? confirmedPredracuns : confirmedRacuns;
             console.log('   docArray.length:', docArray?.length);
             
-            const doc = docArray.find(d => d.number === docNumber);
+            const doc = findDocInArrayByDisplayNumber(docArray, docNumber);
             console.log('   Найден документ:', doc ? 'ДА' : 'НЕТ');
             if (doc) {
                 console.log('   doc.id:', doc.id);
@@ -23845,16 +25685,28 @@
                     );
                     console.log('   📜 Записано в историю для синхронизации');
                 
-                    // Также обновляем в общем массиве confirmedInvoices (в памяти)
-                    const invoiceInGeneral = confirmedInvoices.find(inv => inv.number === docNumber && inv.documentType === docType);
-                    if (invoiceInGeneral) {
+                // Статусы сохраняем в SQLite (backend), localStorage для paid/delivered не используем.
+                
+                    // Дублируем метаданные синка в дубликате в confirmedInvoices (если это не тот же объект по ссылке)
+                    let invoiceInGeneral = confirmedInvoices.find(inv => inv === doc);
+                    if (!invoiceInGeneral) {
+                        const docKey = stripInvoiceNumberPrefix(doc.number || doc.invoiceNumber || doc.invoice_number || docNumber);
+                        invoiceInGeneral = confirmedInvoices.find(inv => {
+                            const k = stripInvoiceNumberPrefix(inv.number || inv.invoiceNumber || inv.invoice_number);
+                            if (k !== docKey) return false;
+                            if (docType && inv.documentType && inv.documentType !== docType) return false;
+                            return true;
+                        });
+                    }
+                    if (invoiceInGeneral && invoiceInGeneral !== doc) {
                         invoiceInGeneral[statusType] = newValue;
                         invoiceInGeneral._syncModified = doc._syncModified;
                         invoiceInGeneral._syncVersion = doc._syncVersion;
                         if (!invoiceInGeneral._statusModifiedAt) invoiceInGeneral._statusModifiedAt = {};
                         invoiceInGeneral._statusModifiedAt[statusType] = changeTime;
-                        console.log('   ✅ Обновлено в confirmedInvoices (в памяти) с версией', doc._syncVersion);
                     }
+                    resyncConfirmedInvoicesAggregateFromSplits();
+                    console.log('   ✅ aggregate confirmedInvoices синхронизирован с predracuns/racuns');
                     
                     // Сохраняем в локальную SQLite базу данных через специальную команду
                     try {
@@ -23867,11 +25719,11 @@
                         console.log('      paid:', paid);
                         console.log('      delivered:', delivered);
                         
-                        await InvoicesAPI.updatePaymentStatus(invoiceNum, paid, delivered);
+                        await InvoicesAPI.updatePaymentStatus(invoiceNum, paid, delivered, docType);
                         console.log(`   ✅ Статус сохранен в ЛОКАЛЬНУЮ базу данных для ${docName} #${docNumber}`);
                     } catch (error) {
                         console.error('   ❌ Ошибка сохранения статуса в локальную базу:', error);
-                        showAlert('Не удалось сохранить статус в базе данных. Проверьте логи.', 'danger');
+                        // Не показываем предупреждение - данные сохранены в localStorage
                     }
                     
                     // Разный лог в зависимости от действия

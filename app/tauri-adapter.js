@@ -231,13 +231,16 @@ window.api = {
             }
         },
         
-        updatePaymentStatus: async (invoiceNumber, paid, delivered) => {
+        updatePaymentStatus: async (invoiceNumber, paid, delivered, documentType = null) => {
             try {
                 console.log('📡 Обновляем статус оплаты/доставки:', invoiceNumber, 'paid=', paid, 'delivered=', delivered);
                 await invoke('update_invoice_payment_status', { 
-                    invoiceNumber: String(invoiceNumber), 
+                    // поддерживаем оба имени для совместимости на стороне Rust (alias)
+                    invoiceNumber: String(invoiceNumber),
+                    invoice_number: String(invoiceNumber),
                     paid: Boolean(paid), 
-                    delivered: Boolean(delivered) 
+                    delivered: Boolean(delivered),
+                    document_type: documentType ? String(documentType) : null
                 });
                 console.log('✅ Статус оплаты/доставки обновлен');
                 return true;

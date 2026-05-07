@@ -104,6 +104,49 @@
         .chart-container { background: white; border-radius: 12px; padding: 25px; margin-bottom: 30px; border: 2px solid #e9ecef; }
         .chart-title { font-size: 20px; font-weight: bold; color: #212529; margin-bottom: 20px; text-align: center; }
         .filter-section { background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 30px; border: 2px solid #e9ecef; }
+        /* Forecast: compact & aligned */
+        .forecast-compact .filter-section { padding: 14px; margin-bottom: 18px; }
+        .forecast-compact .chart-container { padding: 14px; margin-bottom: 18px; }
+        .forecast-compact .chart-title { font-size: 16px; margin-bottom: 12px; text-align: left; }
+        .forecast-compact .stats-container { gap: 12px; margin-bottom: 18px; }
+        .forecast-compact .stat-card { padding: 14px; box-shadow: 0 2px 10px rgba(17, 74, 159, 0.18); }
+        .forecast-compact .stat-card .stat-number { font-size: 22px; }
+        .forecast-compact .stat-card .stat-label { font-size: 12px; }
+        .forecast-compact .table th { padding: 10px 8px; font-size: 12px; }
+        .forecast-compact .table td { padding: 9px 8px; font-size: 12px; }
+        .forecast-compact input, .forecast-compact select { padding: 10px 12px; border-radius: 10px; }
+        /* Режим прогноза: всегда в рамках (grid) */
+        .forecast-compact .forecast-mode-options {
+            display:grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap:10px;
+            padding-top:6px;
+            align-items:stretch;
+        }
+        .forecast-compact .forecast-mode-pill {
+            display:flex; align-items:center; gap:8px;
+            padding:8px 10px; border-radius: 12px;
+            background:#ffffff; border:2px solid #e2e8f0;
+            color:#334155; cursor:pointer; user-select:none;
+            font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.2px;
+            line-height:1.1;
+            justify-content:center;
+            text-align:center;
+            width:100%;
+            min-width:0;
+            white-space:normal;
+            word-break:break-word;
+        }
+        .forecast-compact .forecast-mode-pill input { margin:0; }
+        .forecast-compact .forecast-mode-pill:hover { border-color:#114A9F; }
+        .forecast-compact .forecast-mode-pill.is-checked { border-color:#114A9F; box-shadow:0 0 0 4px rgba(17,74,159,0.08); }
+        @media (max-width: 900px) {
+            .forecast-compact .chart-title { font-size: 15px; }
+            .forecast-compact .stats-container { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+        }
+        @media (max-width: 520px) {
+            .forecast-compact .forecast-mode-options { grid-template-columns: 1fr; }
+        }
         .invoice-list { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; border: 2px solid #e9ecef; }
         .invoice-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #e9ecef; transition: background 0.3s ease; }
         .invoice-item:hover { background: #f8f9fa; }
@@ -4310,7 +4353,7 @@
             </div> <!-- Конец statsContentSales -->
             
             <!-- Подвкладка: Прогноз потребления и выручки -->
-            <div id="statsContentForecast" style="display: none;">
+            <div id="statsContentForecast" class="forecast-compact" style="display: none;">
                 <div class="filter-section">
                     <h3>Прогноз потребления и выручки</h3>
                     <div class="form-grid">
@@ -4330,11 +4373,23 @@
                         </div>
                         <div class="form-group">
                             <label>Режим прогноза:</label>
-                            <div style="display:flex; flex-wrap: wrap; gap: 10px; padding-top: 6px;">
-                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="no_growth" checked> Без роста</label>
-                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="preset_pct"> Предустановленные %</label>
-                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="auto_trend"> Авто‑тренд</label>
-                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="manual_pct"> Ручной %</label>
+                            <div class="forecast-mode-options">
+                                <label class="forecast-mode-pill" data-forecast-mode-pill>
+                                    <input type="radio" name="forecastMode" value="preset_pct">
+                                    ПРЕДУСТАНОВЛЕННЫЕ %
+                                </label>
+                                <label class="forecast-mode-pill" data-forecast-mode-pill>
+                                    <input type="radio" name="forecastMode" value="manual_pct">
+                                    РУЧНОЙ
+                                </label>
+                                <label class="forecast-mode-pill" data-forecast-mode-pill>
+                                    <input type="radio" name="forecastMode" value="auto_trend">
+                                    АВТО‑ТРЕНД
+                                </label>
+                                <label class="forecast-mode-pill" data-forecast-mode-pill>
+                                    <input type="radio" name="forecastMode" value="no_growth" checked>
+                                    БЕЗ РОСТА
+                                </label>
                             </div>
                         </div>
                         <div class="form-group">
@@ -4370,13 +4425,37 @@
                 </div>
 
                 <div class="chart-container">
-                    <div class="chart-title">Таблица прогноза по SKU</div>
-                    <div id="forecastSkuTable"></div>
-                </div>
-
-                <div class="chart-container">
-                    <div class="chart-title">Агрегация по товару (упаковки вместе)</div>
-                    <div id="forecastFamilyTable"></div>
+                    <div class="chart-title" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <span>Таблица прогноза</span>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTableMode('sku')">SKU</button>
+                            <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTableMode('family')">Агрегация</button>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-bottom:12px;">
+                        <div class="form-group" style="margin:0; min-width:220px;">
+                            <label style="font-size:12px;">Поиск</label>
+                            <input type="text" id="forecastTableSearch" placeholder="SKU / название / категория" style="margin:0;" oninput="renderForecastTable()">
+                        </div>
+                        <div class="form-group" style="margin:0; width:200px;">
+                            <label style="font-size:12px;">Стабильность</label>
+                            <select id="forecastTableStability" onchange="renderForecastTable()" style="margin:0;">
+                                <option value="all">Все</option>
+                                <option value="stable50">≥ 50%</option>
+                                <option value="stable75">≥ 75%</option>
+                                <option value="rare25">≥ 25%</option>
+                                <option value="red">🔴 &lt; 25%</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label style="font-size:12px;">&nbsp;</label>
+                            <label style="display:flex; gap:8px; align-items:center; margin:0;">
+                                <input type="checkbox" id="forecastHideUnreliable" checked onchange="renderForecastTable()">
+                                Скрыть 🔴
+                            </label>
+                        </div>
+                    </div>
+                    <div id="forecastTable"></div>
                 </div>
             </div>
             
@@ -18099,6 +18178,7 @@ ${lineXml}
                     r.addEventListener('change', syncForecastGrowthInputsState);
                 });
                 syncForecastGrowthInputsState();
+                syncForecastModePills();
 
                 // Категории из продуктов (без доп. запросов)
                 populateForecastCategories();
@@ -18117,6 +18197,18 @@ ${lineXml}
                 const el = document.getElementById(id);
                 if (el) el.disabled = disabled;
             });
+            syncForecastModePills();
+        }
+
+        function syncForecastModePills() {
+            try {
+                const checked = document.querySelector('input[name="forecastMode"]:checked')?.value;
+                document.querySelectorAll('[data-forecast-mode-pill]').forEach(pill => {
+                    const val = pill.querySelector('input[name="forecastMode"]')?.value;
+                    if (val && val === checked) pill.classList.add('is-checked');
+                    else pill.classList.remove('is-checked');
+                });
+            } catch (_) { /* ignore */ }
         }
 
         function getSelectedForecastMode() {
@@ -18199,8 +18291,238 @@ ${lineXml}
             renderForecastKpi(report);
             renderForecastTotalsChart(report);
             renderForecastTop10(report);
-            renderForecastSkuTable(report);
-            renderForecastFamilyTable(report);
+            renderForecastTable();
+        }
+
+        let __forecastTableMode = 'sku'; // 'sku' | 'family'
+        let __forecastTableSort = { key: 'avg_weight_kg_per_month', dir: 'desc' }; // key depends on mode
+
+        function setForecastTableMode(mode) {
+            __forecastTableMode = (mode === 'family') ? 'family' : 'sku';
+            __forecastTableSort = { key: __forecastTableMode === 'family' ? 'sum_weight_kg' : 'avg_weight_kg_per_month', dir: 'desc' };
+            renderForecastTable();
+        }
+
+        function renderForecastTable() {
+            const el = document.getElementById('forecastTable');
+            if (!el) return;
+            if (!__forecastReport) {
+                el.innerHTML = '<div style="text-align:center; padding:40px; color:#666;">Нажмите «Пересчитать»</div>';
+                return;
+            }
+
+            const horizons = (__forecastReport.meta && __forecastReport.meta.horizons) ? __forecastReport.meta.horizons : [3, 6, 12];
+            const q = String(document.getElementById('forecastTableSearch')?.value || '').trim().toLowerCase();
+            const stabMode = String(document.getElementById('forecastTableStability')?.value || 'all');
+            const hideUnreliable = Boolean(document.getElementById('forecastHideUnreliable')?.checked);
+
+            // icons/handlers для кликабельной сортировки
+            // (глобальные функции нужны, потому что onClick в innerHTML)
+            window.forecastTableSortIcon = (key) => {
+                const s = __forecastTableSort;
+                if (s.key !== key) return '↕';
+                return s.dir === 'asc' ? '▲' : '▼';
+            };
+            window.forecastTableSetSort = (key) => {
+                const s = __forecastTableSort;
+                if (s.key === key) s.dir = (s.dir === 'asc') ? 'desc' : 'asc';
+                else { s.key = key; s.dir = 'desc'; }
+                renderForecastTable();
+            };
+
+            if (__forecastTableMode === 'sku') {
+                let rows = (__forecastReport.sku_table || []).slice();
+                if (q) {
+                    rows = rows.filter(r => {
+                        const hay = `${r.sku_code || ''} ${r.product_name || ''} ${r.category || ''}`.toLowerCase();
+                        return hay.includes(q);
+                    });
+                }
+                rows = rows.filter(r => {
+                    const stab = Number(r.stability || 0);
+                    if (hideUnreliable && r.unreliable === true) return false;
+                    if (stabMode === 'stable75') return stab >= 0.75;
+                    if (stabMode === 'stable50') return stab >= 0.50;
+                    if (stabMode === 'rare25') return stab >= 0.25;
+                    if (stabMode === 'red') return stab < 0.25;
+                    return true;
+                });
+
+                const getNum = (r, key) => {
+                    if (key.startsWith('fw_')) {
+                        const h = Number(key.split('_')[1]);
+                        return (r.forecast_weight_kg && r.forecast_weight_kg[h] != null) ? Number(r.forecast_weight_kg[h]) : 0;
+                    }
+                    if (key.startsWith('fu_')) {
+                        const h = Number(key.split('_')[1]);
+                        return (r.forecast_units && r.forecast_units[h] != null) ? Number(r.forecast_units[h]) : 0;
+                    }
+                    if (key.startsWith('fr_')) {
+                        const h = Number(key.split('_')[1]);
+                        return (r.forecast_revenue_rsd && r.forecast_revenue_rsd[h] != null) ? Number(r.forecast_revenue_rsd[h]) : 0;
+                    }
+                    return Number(r[key] || 0);
+                };
+
+                const s = __forecastTableSort;
+                rows.sort((a, b) => {
+                    let av, bv;
+                    if (s.key === 'sku_code' || s.key === 'product_name' || s.key === 'category') {
+                        av = String(a[s.key] || '');
+                        bv = String(b[s.key] || '');
+                        const c = av.localeCompare(bv, 'ru');
+                        return s.dir === 'asc' ? c : -c;
+                    }
+                    av = getNum(a, s.key);
+                    bv = getNum(b, s.key);
+                    const c = (bv - av);
+                    return s.dir === 'asc' ? -c : c;
+                });
+
+                if (!rows.length) {
+                    el.innerHTML = '<div style="text-align:center; padding:40px; color:#666;">Нет данных по фильтрам</div>';
+                    return;
+                }
+
+                const head = `
+                    <th style="text-align:right;">#</th>
+                    <th style="text-align:left; cursor:pointer;" onclick="forecastTableSetSort('sku_code')">Код <span style="opacity:0.7;">${window.forecastTableSortIcon('sku_code')}</span></th>
+                    <th style="text-align:left; cursor:pointer;" onclick="forecastTableSetSort('product_name')">Название <span style="opacity:0.7;">${window.forecastTableSortIcon('product_name')}</span></th>
+                    <th style="text-align:left; cursor:pointer;" onclick="forecastTableSetSort('category')">Категория <span style="opacity:0.7;">${window.forecastTableSortIcon('category')}</span></th>
+                    <th style="text-align:right; cursor:pointer;" onclick="forecastTableSetSort('sum_units')">Σ шт <span style="opacity:0.7;">${window.forecastTableSortIcon('sum_units')}</span></th>
+                    <th style="text-align:right; cursor:pointer;" onclick="forecastTableSetSort('sum_weight_kg')">Σ кг <span style="opacity:0.7;">${window.forecastTableSortIcon('sum_weight_kg')}</span></th>
+                    <th style="text-align:right; cursor:pointer;" onclick="forecastTableSetSort('sum_revenue_rsd')">Σ RSD <span style="opacity:0.7;">${window.forecastTableSortIcon('sum_revenue_rsd')}</span></th>
+                    <th style="text-align:right; cursor:pointer;" onclick="forecastTableSetSort('stability')">Стаб. <span style="opacity:0.7;">${window.forecastTableSortIcon('stability')}</span></th>
+                    <th style="text-align:right; cursor:pointer;" onclick="forecastTableSetSort('avg_weight_kg_per_month')">ср кг/мес <span style="opacity:0.7;">${window.forecastTableSortIcon('avg_weight_kg_per_month')}</span></th>
+                    ${horizons.map(h => `<th style="text-align:right; cursor:pointer; color:#dc2626;" onclick="forecastTableSetSort('fw_${h}')">кг ${h}м <span style="opacity:0.7;">${window.forecastTableSortIcon('fw_${h}')}</span></th>`).join('')}
+                    ${horizons.map(h => `<th style="text-align:right; cursor:pointer; color:#2563eb;" onclick="forecastTableSetSort('fu_${h}')">шт ${h}м <span style="opacity:0.7;">${window.forecastTableSortIcon('fu_${h}')}</span></th>`).join('')}
+                    ${horizons.map(h => `<th style="text-align:right; cursor:pointer; color:#059669;" onclick="forecastTableSetSort('fr_${h}')">RSD ${h}м <span style="opacity:0.7;">${window.forecastTableSortIcon('fr_${h}')}</span></th>`).join('')}
+                `;
+
+                const body = rows.map((r, idx) => {
+                    const stab = Number(r.stability || 0);
+                    const badge = stab >= 0.75 ? '🟢' : stab >= 0.5 ? '🟡' : stab >= 0.25 ? '🟠' : '🔴';
+                    const unreliable = r.unreliable === true;
+                    const style = unreliable ? 'color:#6b7280; font-style: italic;' : '';
+                    const fw = (h) => (r.forecast_weight_kg && r.forecast_weight_kg[h] != null) ? r.forecast_weight_kg[h] : 0;
+                    const fu = (h) => (r.forecast_units && r.forecast_units[h] != null) ? r.forecast_units[h] : 0;
+                    const fr = (h) => (r.forecast_revenue_rsd && r.forecast_revenue_rsd[h] != null) ? r.forecast_revenue_rsd[h] : 0;
+                    return `<tr style="${style}">
+                        <td style="text-align:right;">${idx + 1}</td>
+                        <td style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">${escapeHtml(r.sku_code)}</td>
+                        <td>${escapeHtml(r.product_name)}</td>
+                        <td>${escapeHtml(r.category || '')}</td>
+                        <td style="text-align:right; font-variant-numeric: tabular-nums;">${fmt(r.sum_units)}</td>
+                        <td style="text-align:right; font-variant-numeric: tabular-nums;">${fmt(r.sum_weight_kg)}</td>
+                        <td style="text-align:right; font-variant-numeric: tabular-nums;">${formatPriceWithCurrency(r.sum_revenue_rsd)}</td>
+                        <td style="text-align:right;">${badge} ${Math.round(stab * 100)}%</td>
+                        <td style="text-align:right; font-variant-numeric: tabular-nums;">${fmt(r.avg_weight_kg_per_month)}</td>
+                        ${horizons.map(h => `<td style="text-align:right; font-variant-numeric: tabular-nums; color:#dc2626;">${fmt(fw(h))}${unreliable ? '*' : ''}</td>`).join('')}
+                        ${horizons.map(h => `<td style="text-align:right; font-variant-numeric: tabular-nums; color:#2563eb;">${fmt(fu(h))}${unreliable ? '*' : ''}</td>`).join('')}
+                        ${horizons.map(h => `<td style="text-align:right; font-variant-numeric: tabular-nums; color:#059669;">${formatPriceWithCurrency(fr(h))}${unreliable ? '*' : ''}</td>`).join('')}
+                    </tr>`;
+                }).join('');
+
+                el.innerHTML = `
+                    <div style="overflow:auto;">
+                        <table class="table">
+                            <thead><tr>${head}</tr></thead>
+                            <tbody>${body}</tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top:10px; font-size:12px; color:#666;">
+                        * Для 🔴 (стабильность &lt; 25%) прогноз считается ненадёжным.
+                    </div>
+                `;
+                return;
+            }
+
+            // family mode
+            let rows = (__forecastReport.family_table || []).slice();
+            if (q) {
+                rows = rows.filter(r => {
+                    const hay = `${r.family_name || ''} ${(r.pack_sizes_g || []).join(',')} ${r.category || ''}`.toLowerCase();
+                    return hay.includes(q);
+                });
+            }
+            // stability filter in family mode = no-op (нет stability), но "red" используем как "мало SKU"
+            rows = rows.filter(r => {
+                if (stabMode === 'red') return Number(r.sku_count || 0) <= 1;
+                return true;
+            });
+            const getNumF = (r, key) => {
+                if (key.startsWith('fw_')) {
+                    const h = Number(key.split('_')[1]);
+                    return (r.forecast_weight_kg && r.forecast_weight_kg[h] != null) ? Number(r.forecast_weight_kg[h]) : 0;
+                }
+                if (key.startsWith('fu_')) {
+                    const h = Number(key.split('_')[1]);
+                    return (r.forecast_units && r.forecast_units[h] != null) ? Number(r.forecast_units[h]) : 0;
+                }
+                if (key.startsWith('fr_')) {
+                    const h = Number(key.split('_')[1]);
+                    return (r.forecast_revenue_rsd && r.forecast_revenue_rsd[h] != null) ? Number(r.forecast_revenue_rsd[h]) : 0;
+                }
+                return Number(r[key] || 0);
+            };
+            const s = __forecastTableSort;
+            rows.sort((a, b) => {
+                if (s.key === 'family_name' || s.key === 'category') {
+                    const c = String(a[s.key] || '').localeCompare(String(b[s.key] || ''), 'ru');
+                    return s.dir === 'asc' ? c : -c;
+                }
+                const av = getNumF(a, s.key);
+                const bv = getNumF(b, s.key);
+                const c = (bv - av);
+                return s.dir === 'asc' ? -c : c;
+            });
+
+            if (!rows.length) {
+                el.innerHTML = '<div style="text-align:center; padding:40px; color:#666;">Нет данных по фильтрам</div>';
+                return;
+            }
+
+            const head = `
+                <th style="text-align:right;">#</th>
+                <th style="text-align:left; cursor:pointer;" onclick="forecastTableSetSort('family_name')">Товар <span style="opacity:0.7;">${window.forecastTableSortIcon('family_name')}</span></th>
+                <th style="text-align:left; cursor:pointer;" onclick="forecastTableSetSort('category')">Категория <span style="opacity:0.7;">${window.forecastTableSortIcon('category')}</span></th>
+                <th style="text-align:right; cursor:pointer;" onclick="forecastTableSetSort('sku_count')">SKU <span style="opacity:0.7;">${window.forecastTableSortIcon('sku_count')}</span></th>
+                <th style="text-align:left;">Упаковки</th>
+                <th style="text-align:right; cursor:pointer;" onclick="forecastTableSetSort('sum_units')">Σ шт <span style="opacity:0.7;">${window.forecastTableSortIcon('sum_units')}</span></th>
+                <th style="text-align:right; cursor:pointer;" onclick="forecastTableSetSort('sum_weight_kg')">Σ кг <span style="opacity:0.7;">${window.forecastTableSortIcon('sum_weight_kg')}</span></th>
+                <th style="text-align:right; cursor:pointer;" onclick="forecastTableSetSort('sum_revenue_rsd')">Σ RSD <span style="opacity:0.7;">${window.forecastTableSortIcon('sum_revenue_rsd')}</span></th>
+                ${horizons.map(h => `<th style="text-align:right; cursor:pointer; color:#dc2626;" onclick="forecastTableSetSort('fw_${h}')">кг ${h}м <span style="opacity:0.7;">${window.forecastTableSortIcon('fw_${h}')}</span></th>`).join('')}
+                ${horizons.map(h => `<th style="text-align:right; cursor:pointer; color:#2563eb;" onclick="forecastTableSetSort('fu_${h}')">шт ${h}м <span style="opacity:0.7;">${window.forecastTableSortIcon('fu_${h}')}</span></th>`).join('')}
+                ${horizons.map(h => `<th style="text-align:right; cursor:pointer; color:#059669;" onclick="forecastTableSetSort('fr_${h}')">RSD ${h}м <span style="opacity:0.7;">${window.forecastTableSortIcon('fr_${h}')}</span></th>`).join('')}
+            `;
+            const body = rows.map((r, idx) => {
+                const pack = (r.pack_sizes_g || []).map(x => `${x}г`).join(', ');
+                const fw = (h) => (r.forecast_weight_kg && r.forecast_weight_kg[h] != null) ? r.forecast_weight_kg[h] : 0;
+                const fu = (h) => (r.forecast_units && r.forecast_units[h] != null) ? r.forecast_units[h] : 0;
+                const fr = (h) => (r.forecast_revenue_rsd && r.forecast_revenue_rsd[h] != null) ? r.forecast_revenue_rsd[h] : 0;
+                return `<tr>
+                    <td style="text-align:right;">${idx + 1}</td>
+                    <td>${escapeHtml(r.family_name)} <span style="color:#666;">×${r.sku_count}</span></td>
+                    <td>${escapeHtml(r.category || '')}</td>
+                    <td style="text-align:right;">${r.sku_count}</td>
+                    <td>${escapeHtml(pack)}</td>
+                    <td style="text-align:right; font-variant-numeric: tabular-nums;">${fmt(r.sum_units)}</td>
+                    <td style="text-align:right; font-variant-numeric: tabular-nums;">${fmt(r.sum_weight_kg)}</td>
+                    <td style="text-align:right; font-variant-numeric: tabular-nums;">${formatPriceWithCurrency(r.sum_revenue_rsd)}</td>
+                    ${horizons.map(h => `<td style="text-align:right; font-variant-numeric: tabular-nums; color:#dc2626;">${fmt(fw(h))}</td>`).join('')}
+                    ${horizons.map(h => `<td style="text-align:right; font-variant-numeric: tabular-nums; color:#2563eb;">${fmt(fu(h))}</td>`).join('')}
+                    ${horizons.map(h => `<td style="text-align:right; font-variant-numeric: tabular-nums; color:#059669;">${formatPriceWithCurrency(fr(h))}</td>`).join('')}
+                </tr>`;
+            }).join('');
+
+            el.innerHTML = `
+                <div style="overflow:auto;">
+                    <table class="table">
+                        <thead><tr>${head}</tr></thead>
+                        <tbody>${body}</tbody>
+                    </table>
+                </div>
+            `;
         }
 
         function renderForecastKpi(report) {
@@ -18217,7 +18539,7 @@ ${lineXml}
                 <div class="stat-card">
                     <div class="stat-number">${c.main}</div>
                     <div class="stat-label">${c.title}</div>
-                    <div style="margin-top:6px; font-size:12px; color:#666;">${c.sub}</div>
+                    <div style="margin-top:6px; font-size:12px; color:rgba(255,255,255,0.92);">${c.sub}</div>
                 </div>
             `).join('');
         }
@@ -18225,7 +18547,9 @@ ${lineXml}
         function renderForecastTotalsChart(report) {
             const el = document.getElementById('forecastTotalsChart');
             if (!el) return;
-            const pts = report.monthly_totals || [];
+            const ptsAll = report.monthly_totals || [];
+            const win = Number(window.__forecastTotalsWindow || 24); // 0 = all
+            const pts = (win && ptsAll.length > win) ? ptsAll.slice(-win) : ptsAll;
             if (!pts.length) {
                 el.innerHTML = '<div style="text-align:center; padding:40px; color:#666;">Нет данных</div>';
                 return;
@@ -18245,10 +18569,18 @@ ${lineXml}
             const dividerX = firstForecastIdx > 0 ? (pad + firstForecastIdx * xStep) : null;
 
             el.innerHTML = `
-                <div style="display:flex; gap:10px; justify-content:flex-end; margin-bottom:10px;">
+                <div style="display:flex; gap:10px; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <span style="font-size:12px; color:#666;">Окно:</span>
+                        <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTotalsWindow(12)">12м</button>
+                        <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTotalsWindow(24)">24м</button>
+                        <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTotalsWindow(0)">Все</button>
+                    </div>
+                    <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
                     <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastMetric('weight')">Вес</button>
                     <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastMetric('units')">Единицы</button>
                     <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastMetric('revenue')">Выручка</button>
+                    </div>
                 </div>
                 <div style="font-size:12px; color:#666; margin-bottom:6px;">${metricLabel}. Пунктир — граница факт/прогноз.</div>
                 <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" style="background:#fff; border:1px solid #e9ecef; border-radius:10px;">
@@ -18263,6 +18595,11 @@ ${lineXml}
             if (__forecastReport) renderForecastTotalsChart(__forecastReport);
         }
 
+        function setForecastTotalsWindow(n) {
+            window.__forecastTotalsWindow = Number(n || 0);
+            if (__forecastReport) renderForecastTotalsChart(__forecastReport);
+        }
+
         function renderForecastTop10(report) {
             const chartEl = document.getElementById('forecastTop10Chart');
             const tableEl = document.getElementById('forecastTop10Table');
@@ -18274,30 +18611,43 @@ ${lineXml}
                 return;
             }
 
-            // Minimal chart: show legend + last month values
-            const lastIdx = t.months.length - 1;
-            const rows = t.series.map(s => {
-                const v = s.points_kg[lastIdx] || 0;
-                return { sku: s.sku_code, name: s.product_name, v };
-            }).sort((a, b) => b.v - a.v);
+            const series = t.series || [];
+            const skuDefault = (window.__forecastTopSku && series.some(s => s.sku_code === window.__forecastTopSku))
+                ? window.__forecastTopSku
+                : (series[0]?.sku_code || '');
+            window.__forecastTopSku = skuDefault;
 
-            let html = '<div style="padding:12px;">';
-            html += `<div style="font-size:12px; color:#666; margin-bottom:8px;">Показан последний месяц факта (для компактности UI). Полная помесячная таблица ниже.</div>`;
-            const maxV = Math.max(...rows.map(r => r.v), 1e-9);
-            rows.forEach(r => {
-                const p = (r.v / maxV) * 100;
-                html += `
-                    <div style="display:flex; align-items:center; gap:10px; margin:8px 0;">
-                        <div style="width:160px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px;">${escapeHtml(r.sku)}</div>
-                        <div style="flex:1; background:#f1f5f9; border-radius:8px; overflow:hidden; height:14px;">
-                            <div style="width:${p.toFixed(1)}%; height:14px; background:#dc2626;"></div>
-                        </div>
-                        <div style="width:90px; text-align:right; font-variant-numeric: tabular-nums;">${fmt(r.v)}</div>
+            const win = Number(window.__forecastTopWindow || 24); // 0 = all
+            const months = (win && t.months.length > win) ? t.months.slice(-win) : t.months.slice();
+            const idxOffset = t.months.length - months.length;
+            const sel = series.find(s => s.sku_code === window.__forecastTopSku) || series[0];
+            const values = (sel?.points_kg || []).slice(idxOffset);
+            const maxV = Math.max(...values, 1e-9);
+            const w = 960, h = 220, pad = 24;
+            const xStep = (w - pad * 2) / Math.max(values.length - 1, 1);
+            const y = (v) => (h - pad) - (v / maxV) * (h - pad * 2);
+            const poly = values.map((v, i) => `${pad + i * xStep},${y(v)}`).join(' ');
+
+            chartEl.innerHTML = `
+                <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap; margin-bottom:10px;">
+                    <div class="form-group" style="margin:0; min-width:280px; flex:1;">
+                        <label style="font-size:12px;">Товар (SKU)</label>
+                        <select id="forecastTopSkuSelect" onchange="setForecastTopSku(this.value)" style="margin:0;">
+                            ${series.map(s => `<option value="${escapeHtml(s.sku_code)}" ${s.sku_code === window.__forecastTopSku ? 'selected' : ''}>${escapeHtml(s.sku_code)} — ${escapeHtml(s.product_name || '')}</option>`).join('')}
+                        </select>
                     </div>
-                `;
-            });
-            html += '</div>';
-            chartEl.innerHTML = html;
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <span style="font-size:12px; color:#666;">Окно:</span>
+                        <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTopWindow(12)">12м</button>
+                        <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTopWindow(24)">24м</button>
+                        <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTopWindow(0)">Все</button>
+                    </div>
+                </div>
+                <div style="font-size:12px; color:#666; margin-bottom:6px;">Динамика веса (кг) по выбранному SKU за период.</div>
+                <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" style="background:#fff; border:1px solid #e9ecef; border-radius:10px;">
+                    <polyline fill="none" stroke="#dc2626" stroke-width="3" points="${poly}" />
+                </svg>
+            `;
 
             // Table
             const head = `<th style="text-align:left;">SKU</th><th style="text-align:left;">Название</th><th style="text-align:right;">Σ кг</th><th style="text-align:right;">Стабильность</th>` +
@@ -18321,6 +18671,16 @@ ${lineXml}
                     </table>
                 </div>
             `;
+        }
+
+        function setForecastTopSku(sku) {
+            window.__forecastTopSku = String(sku || '');
+            if (__forecastReport) renderForecastTop10(__forecastReport);
+        }
+
+        function setForecastTopWindow(n) {
+            window.__forecastTopWindow = Number(n || 0);
+            if (__forecastReport) renderForecastTop10(__forecastReport);
         }
 
         function renderForecastSkuTable(report) {
@@ -18445,48 +18805,107 @@ ${lineXml}
             }
             try {
                 const wb = XLSX.utils.book_new();
-                const sku = (__forecastReport.sku_table || []).map(r => ({
-                    sku_code: r.sku_code,
-                    product_name: r.product_name,
-                    category: r.category,
-                    unit_weight_g: r.unit_weight_g,
-                    sum_units: r.sum_units,
-                    sum_weight_kg: r.sum_weight_kg,
-                    sum_revenue_rsd: r.sum_revenue_rsd,
-                    stability: r.stability,
-                    avg_weight_kg_per_month: r.avg_weight_kg_per_month,
-                    w_3: r.forecast_weight_kg?.[3],
-                    w_6: r.forecast_weight_kg?.[6],
-                    w_12: r.forecast_weight_kg?.[12],
-                    u_3: r.forecast_units?.[3],
-                    u_6: r.forecast_units?.[6],
-                    u_12: r.forecast_units?.[12],
-                    r_3: r.forecast_revenue_rsd?.[3],
-                    r_6: r.forecast_revenue_rsd?.[6],
-                    r_12: r.forecast_revenue_rsd?.[12],
-                }));
-                const ws1 = XLSX.utils.json_to_sheet(sku);
-                XLSX.utils.book_append_sheet(wb, ws1, 'SKU forecast');
+                const num2 = (v) => {
+                    const n = Number(v);
+                    return Number.isFinite(n) ? n : 0;
+                };
+                const applyNumberFormat = (ws) => {
+                    const ref = ws['!ref'];
+                    if (!ref) return;
+                    const range = XLSX.utils.decode_range(ref);
+                    for (let r = range.s.r + 1; r <= range.e.r; r++) { // пропускаем заголовок
+                        for (let c = range.s.c; c <= range.e.c; c++) {
+                            const addr = XLSX.utils.encode_cell({ r, c });
+                            const cell = ws[addr];
+                            if (!cell) continue;
+                            if (cell.t === 'n') cell.z = '0.00';
+                        }
+                    }
+                };
+                const autosizeCols = (aoa) => {
+                    const cols = [];
+                    const colCount = Math.max(...aoa.map(r => (r ? r.length : 0)), 0);
+                    for (let c = 0; c < colCount; c++) {
+                        let maxLen = 10;
+                        for (let r = 0; r < aoa.length; r++) {
+                            const v = (aoa[r] && aoa[r][c] != null) ? aoa[r][c] : '';
+                            const s = (typeof v === 'number') ? v.toFixed(2) : String(v);
+                            maxLen = Math.max(maxLen, s.length);
+                        }
+                        cols.push({ wch: Math.min(Math.max(maxLen + 2, 10), 45) });
+                    }
+                    return cols;
+                };
 
-                const fam = (__forecastReport.family_table || []).map(r => ({
-                    family_name: r.family_name,
-                    category: r.category,
-                    sku_count: r.sku_count,
-                    pack_sizes_g: (r.pack_sizes_g || []).join(','),
-                    sum_units: r.sum_units,
-                    sum_weight_kg: r.sum_weight_kg,
-                    w_3: r.forecast_weight_kg?.[3],
-                    w_6: r.forecast_weight_kg?.[6],
-                    w_12: r.forecast_weight_kg?.[12],
-                    u_3: r.forecast_units?.[3],
-                    u_6: r.forecast_units?.[6],
-                    u_12: r.forecast_units?.[12],
-                    r_3: r.forecast_revenue_rsd?.[3],
-                    r_6: r.forecast_revenue_rsd?.[6],
-                    r_12: r.forecast_revenue_rsd?.[12],
-                }));
-                const ws2 = XLSX.utils.json_to_sheet(fam);
-                XLSX.utils.book_append_sheet(wb, ws2, 'Families');
+                // -------- SKU sheet (русские заголовки, 2 decimals, авто-ширина)
+                const skuRows = (__forecastReport.sku_table || []);
+                const skuHeader = [
+                    'Код SKU', 'Название', 'Категория', 'Вес/ед (г)',
+                    'Σ шт', 'Σ кг', 'Σ RSD', 'Стабильность (%)', 'Ср кг/мес',
+                    'Вес на 3 мес (кг)', 'Вес на 6 мес (кг)', 'Вес на 12 мес (кг)',
+                    'Шт на 3 мес', 'Шт на 6 мес', 'Шт на 12 мес',
+                    'Выручка на 3 мес (RSD)', 'Выручка на 6 мес (RSD)', 'Выручка на 12 мес (RSD)',
+                ];
+                const skuAoa = [skuHeader].concat(
+                    skuRows.map(r => ([
+                        r.sku_code,
+                        r.product_name,
+                        r.category || '',
+                        r.unit_weight_g != null ? num2(r.unit_weight_g) : '',
+                        num2(r.sum_units),
+                        num2(r.sum_weight_kg),
+                        num2(r.sum_revenue_rsd),
+                        num2((r.stability || 0) * 100.0),
+                        num2(r.avg_weight_kg_per_month),
+                        num2(r.forecast_weight_kg?.[3]),
+                        num2(r.forecast_weight_kg?.[6]),
+                        num2(r.forecast_weight_kg?.[12]),
+                        num2(r.forecast_units?.[3]),
+                        num2(r.forecast_units?.[6]),
+                        num2(r.forecast_units?.[12]),
+                        num2(r.forecast_revenue_rsd?.[3]),
+                        num2(r.forecast_revenue_rsd?.[6]),
+                        num2(r.forecast_revenue_rsd?.[12]),
+                    ]))
+                );
+                const ws1 = XLSX.utils.aoa_to_sheet(skuAoa);
+                ws1['!cols'] = autosizeCols(skuAoa);
+                applyNumberFormat(ws1);
+                XLSX.utils.book_append_sheet(wb, ws1, 'Прогноз SKU');
+
+                // -------- Family sheet (русские заголовки, 2 decimals, авто-ширина)
+                const famRows = (__forecastReport.family_table || []);
+                const famHeader = [
+                    'Товар (агрегация)', 'Категория', 'Кол-во SKU', 'Упаковки (г)',
+                    'Σ шт', 'Σ кг', 'Σ RSD',
+                    'Вес на 3 мес (кг)', 'Вес на 6 мес (кг)', 'Вес на 12 мес (кг)',
+                    'Шт на 3 мес', 'Шт на 6 мес', 'Шт на 12 мес',
+                    'Выручка на 3 мес (RSD)', 'Выручка на 6 мес (RSD)', 'Выручка на 12 мес (RSD)',
+                ];
+                const famAoa = [famHeader].concat(
+                    famRows.map(r => ([
+                        r.family_name,
+                        r.category || '',
+                        num2(r.sku_count),
+                        (r.pack_sizes_g || []).join(','),
+                        num2(r.sum_units),
+                        num2(r.sum_weight_kg),
+                        num2(r.sum_revenue_rsd),
+                        num2(r.forecast_weight_kg?.[3]),
+                        num2(r.forecast_weight_kg?.[6]),
+                        num2(r.forecast_weight_kg?.[12]),
+                        num2(r.forecast_units?.[3]),
+                        num2(r.forecast_units?.[6]),
+                        num2(r.forecast_units?.[12]),
+                        num2(r.forecast_revenue_rsd?.[3]),
+                        num2(r.forecast_revenue_rsd?.[6]),
+                        num2(r.forecast_revenue_rsd?.[12]),
+                    ]))
+                );
+                const ws2 = XLSX.utils.aoa_to_sheet(famAoa);
+                ws2['!cols'] = autosizeCols(famAoa);
+                applyNumberFormat(ws2);
+                XLSX.utils.book_append_sheet(wb, ws2, 'Агрегация');
 
                 const name = `Forecast_${new Date().toISOString().slice(0,10)}.xlsx`;
                 XLSX.writeFile(wb, name);

@@ -206,18 +206,26 @@ impl ForecastService {
         };
 
         // Trend model (auto)
-        let (trend_w, trend_r) = if matches!(req.mode, ForecastMode::AutoTrend) {
+        let (trend_w, trend_u, trend_r) = if matches!(req.mode, ForecastMode::AutoTrend) {
             let series_w: Vec<f64> = months
                 .iter()
                 .map(|m| monthly_totals_actual.get(m).map(|x| x.weight_kg).unwrap_or(0.0))
+                .collect();
+            let series_u: Vec<f64> = months
+                .iter()
+                .map(|m| monthly_totals_actual.get(m).map(|x| x.units).unwrap_or(0.0))
                 .collect();
             let series_r: Vec<f64> = months
                 .iter()
                 .map(|m| monthly_totals_actual.get(m).map(|x| x.revenue_rsd).unwrap_or(0.0))
                 .collect();
-            (Some(trend_regression(&series_w)), Some(trend_regression(&series_r)))
+            (
+                Some(trend_regression(&series_w)),
+                Some(trend_regression(&series_u)),
+                Some(trend_regression(&series_r)),
+            )
         } else {
-            (None, None)
+            (None, None, None)
         };
 
         let mut effective_growth_weight: HashMap<u32, f64> = HashMap::new();
@@ -282,6 +290,11 @@ impl ForecastService {
                 for (i, fm) in future_months.iter().enumerate() {
                     let t = (base_len as f64) + (i as f64);
                     let fw = (model.a * t + model.b).max(0.0);
+                    let fu = if let Some(mu) = trend_u.as_ref() {
+                        (mu.a * t + mu.b).max(0.0)
+                    } else {
+                        0.0
+                    };
                     let fr = if let Some(mr) = trend_r.as_ref() {
                         (mr.a * t + mr.b).max(0.0)
                     } else {
@@ -290,7 +303,7 @@ impl ForecastService {
                     monthly_points.push(MonthlyPoint {
                         month: fm.clone(),
                         weight_kg: fw,
-                        units: 0.0,
+                        units: fu,
                         revenue_rsd: fr,
                         kind: "forecast".to_string(),
                     });
@@ -317,7 +330,14 @@ impl ForecastService {
         let top10 = top10_series(&sku_monthly, &months);
 
         // SKU table forecast: per-SKU avg and apply growth
-        let sku_table = sku_table_forecast(&sku_monthly, &months, &horizons, &req, trend_w.as_ref(), trend_r.as_ref());
+        let sku_table = sku_table_forecast(
+            &sku_monthly,
+            &months,
+            &horizons,
+            &req,
+            &effective_growth_weight,
+            &effective_growth_revenue,
+        );
         let family_table = family_table_forecast(&sku_table, &horizons);
 
         let mut trend_warning: Option<String> = None;
@@ -576,6 +596,7 @@ fn stability(months_kg: &[f64]) -> f64 {
 
 #[derive(Debug, Clone)]
 struct TrendModel {
+    n_used: usize,
     a: f64,
     b: f64,
     r2: f64,
@@ -614,7 +635,7 @@ fn trend_regression(series: &[f64]) -> TrendModel {
     }
     let r2 = if ss_tot.abs() < 1e-12 { 0.0 } else { 1.0 - (ss_res / ss_tot) };
 
-    TrendModel { a, b, r2 }
+    TrendModel { n_used: slice.len(), a, b, r2 }
 }
 
 fn resolve_growth(mode: ForecastMode, horizon: u32, mean: f64, trend: Option<&TrendModel>) -> (f64, Option<f64>, Option<String>) {
@@ -628,7 +649,7 @@ fn resolve_growth(mode: ForecastMode, horizon: u32, mean: f64, trend: Option<&Tr
             if let Some(t) = trend {
                 // compute effective growth via summed regression forecast
                 let n = horizon as usize;
-                let base_len = series_len_for_trend(12); // t axis baseline; not critical for coefficient
+                let base_len = t.n_used; // future starts right after regression window
                 let mut total = 0.0;
                 for i in 0..n {
                     let tt = (base_len as f64) + (i as f64);
@@ -705,8 +726,8 @@ fn sku_table_forecast(
     months: &[String],
     horizons: &[u32],
     req: &ForecastRequest,
-    _trend_w: Option<&TrendModel>,
-    _trend_r: Option<&TrendModel>,
+    overall_growth_weight: &HashMap<u32, f64>,
+    overall_growth_revenue: &HashMap<u32, f64>,
 ) -> Vec<SkuForecastRow> {
     let m = months.len() as f64;
     let mut rows: Vec<SkuForecastRow> = Vec::new();
@@ -724,8 +745,18 @@ fn sku_table_forecast(
         let mut fu: HashMap<u32, f64> = HashMap::new();
         let mut fr: HashMap<u32, f64> = HashMap::new();
         for &h in horizons {
-            let (gw, _, _) = resolve_growth_from_req(req, h, avg_weight_kg_per_month, None);
-            let (gr, _, _) = resolve_growth_from_req(req, h, avg_revenue_per_month, None);
+            // В auto_trend режиме применяем общий коэффициент тренда (по всей истории),
+            // чтобы не строить отдельные регрессии на каждый SKU.
+            let gw = if matches!(req.mode, ForecastMode::AutoTrend) {
+                *overall_growth_weight.get(&h).unwrap_or(&0.0)
+            } else {
+                resolve_growth_from_req(req, h, avg_weight_kg_per_month, None).0
+            };
+            let gr = if matches!(req.mode, ForecastMode::AutoTrend) {
+                *overall_growth_revenue.get(&h).unwrap_or(&0.0)
+            } else {
+                resolve_growth_from_req(req, h, avg_revenue_per_month, None).0
+            };
             fw.insert(h, avg_weight_kg_per_month * (h as f64) * (1.0 + gw));
             fu.insert(h, avg_units_per_month * (h as f64) * (1.0 + gw));
             fr.insert(h, avg_revenue_per_month * (h as f64) * (1.0 + gr));

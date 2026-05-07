@@ -130,14 +130,15 @@
             color:#334155; cursor:pointer; user-select:none;
             font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.2px;
             line-height:1.1;
-            justify-content:center;
-            text-align:center;
+            justify-content:flex-start;
+            text-align:left;
             width:100%;
             min-width:0;
             white-space:normal;
             word-break:break-word;
         }
         .forecast-compact .forecast-mode-pill input { margin:0; }
+        .forecast-compact .forecast-mode-pill .forecast-mode-text { display:inline; min-width:0; }
         .forecast-compact .forecast-mode-pill:hover { border-color:#114A9F; }
         .forecast-compact .forecast-mode-pill.is-checked { border-color:#114A9F; box-shadow:0 0 0 4px rgba(17,74,159,0.08); }
         @media (max-width: 900px) {
@@ -4376,19 +4377,19 @@
                             <div class="forecast-mode-options">
                                 <label class="forecast-mode-pill" data-forecast-mode-pill>
                                     <input type="radio" name="forecastMode" value="preset_pct">
-                                    ПРЕДУСТАНОВЛЕННЫЕ %
+                                    <span class="forecast-mode-text">ПРЕДУСТАНОВЛЕННЫЕ %</span>
                                 </label>
                                 <label class="forecast-mode-pill" data-forecast-mode-pill>
                                     <input type="radio" name="forecastMode" value="manual_pct">
-                                    РУЧНОЙ
+                                    <span class="forecast-mode-text">РУЧНОЙ</span>
                                 </label>
                                 <label class="forecast-mode-pill" data-forecast-mode-pill>
                                     <input type="radio" name="forecastMode" value="auto_trend">
-                                    АВТО‑ТРЕНД
+                                    <span class="forecast-mode-text">АВТО‑ТРЕНД</span>
                                 </label>
                                 <label class="forecast-mode-pill" data-forecast-mode-pill>
                                     <input type="radio" name="forecastMode" value="no_growth" checked>
-                                    БЕЗ РОСТА
+                                    <span class="forecast-mode-text">БЕЗ РОСТА</span>
                                 </label>
                             </div>
                         </div>
@@ -18568,6 +18569,29 @@ ${lineXml}
             const firstForecastIdx = pts.findIndex(p => p.kind === 'forecast');
             const dividerX = firstForecastIdx > 0 ? (pad + firstForecastIdx * xStep) : null;
 
+            const monthLabels = pts.map(p => String(p.month || '').slice(0, 7));
+            const showEvery = monthLabels.length <= 14 ? 1 : monthLabels.length <= 24 ? 2 : 3;
+            const yTicks = [
+                { v: maxV, label: fmt(maxV) },
+                { v: maxV / 2, label: fmt(maxV / 2) },
+                { v: 0, label: '0' },
+            ];
+            const gridLines = yTicks.map(tk => {
+                const yy = y(tk.v);
+                return `<line x1="${pad}" y1="${yy}" x2="${w - pad}" y2="${yy}" stroke="#e5e7eb" stroke-width="1" />`;
+            }).join('');
+            const yLabels = yTicks.map(tk => {
+                const yy = y(tk.v);
+                return `<text x="${pad - 6}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#64748b">${escapeHtml(tk.label)}</text>`;
+            }).join('');
+            const xLabels = monthLabels.map((m, i) => {
+                if (i % showEvery !== 0 && i !== monthLabels.length - 1) return '';
+                const xx = pad + i * xStep;
+                return `
+                    <text x="${xx}" y="${h - 6}" text-anchor="middle" font-size="10" fill="#64748b">${escapeHtml(m)}</text>
+                `;
+            }).join('');
+
             el.innerHTML = `
                 <div style="display:flex; gap:10px; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
                     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -18584,6 +18608,11 @@ ${lineXml}
                 </div>
                 <div style="font-size:12px; color:#666; margin-bottom:6px;">${metricLabel}. Пунктир — граница факт/прогноз.</div>
                 <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" style="background:#fff; border:1px solid #e9ecef; border-radius:10px;">
+                    ${gridLines}
+                    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="#cbd5e1" stroke-width="1" />
+                    <line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="#cbd5e1" stroke-width="1" />
+                    ${yLabels}
+                    ${xLabels}
                     <polyline fill="none" stroke="#114A9F" stroke-width="3" points="${poly}" />
                     ${dividerX ? `<line x1="${dividerX}" y1="${pad}" x2="${dividerX}" y2="${h-pad}" stroke="#666" stroke-dasharray="6,6" />` : ''}
                 </svg>
@@ -18628,6 +18657,27 @@ ${lineXml}
             const y = (v) => (h - pad) - (v / maxV) * (h - pad * 2);
             const poly = values.map((v, i) => `${pad + i * xStep},${y(v)}`).join(' ');
 
+            const monthLabels = months.map(m => String(m || '').slice(0, 7));
+            const showEvery = monthLabels.length <= 14 ? 1 : monthLabels.length <= 24 ? 2 : 3;
+            const yTicks = [
+                { v: maxV, label: fmt(maxV) },
+                { v: maxV / 2, label: fmt(maxV / 2) },
+                { v: 0, label: '0' },
+            ];
+            const gridLines = yTicks.map(tk => {
+                const yy = y(tk.v);
+                return `<line x1="${pad}" y1="${yy}" x2="${w - pad}" y2="${yy}" stroke="#e5e7eb" stroke-width="1" />`;
+            }).join('');
+            const yLabels = yTicks.map(tk => {
+                const yy = y(tk.v);
+                return `<text x="${pad - 6}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#64748b">${escapeHtml(tk.label)}</text>`;
+            }).join('');
+            const xLabels = monthLabels.map((m, i) => {
+                if (i % showEvery !== 0 && i !== monthLabels.length - 1) return '';
+                const xx = pad + i * xStep;
+                return `<text x="${xx}" y="${h - 6}" text-anchor="middle" font-size="10" fill="#64748b">${escapeHtml(m)}</text>`;
+            }).join('');
+
             chartEl.innerHTML = `
                 <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap; margin-bottom:10px;">
                     <div class="form-group" style="margin:0; min-width:280px; flex:1;">
@@ -18645,6 +18695,11 @@ ${lineXml}
                 </div>
                 <div style="font-size:12px; color:#666; margin-bottom:6px;">Динамика веса (кг) по выбранному SKU за период.</div>
                 <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" style="background:#fff; border:1px solid #e9ecef; border-radius:10px;">
+                    ${gridLines}
+                    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="#cbd5e1" stroke-width="1" />
+                    <line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="#cbd5e1" stroke-width="1" />
+                    ${yLabels}
+                    ${xLabels}
                     <polyline fill="none" stroke="#dc2626" stroke-width="3" points="${poly}" />
                 </svg>
             `;

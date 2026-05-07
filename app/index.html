@@ -4125,77 +4125,6 @@
                 </div>
             </div>
 
-            <!-- Подвкладка: Прогноз потребления и выручки -->
-            <div id="statsContentForecast" style="display: none;">
-                <div class="filter-section">
-                    <h3>Прогноз потребления и выручки</h3>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Период истории с:</label>
-                            <input type="date" id="forecastFromDate">
-                        </div>
-                        <div class="form-group">
-                            <label>Период истории по:</label>
-                            <input type="date" id="forecastToDate">
-                        </div>
-                        <div class="form-group">
-                            <label>Категории:</label>
-                            <select id="forecastCategories" multiple style="height: 44px; padding: 10px; border: 2px solid #e3e8ef; border-radius: 8px; background: white;">
-                            </select>
-                            <small style="color:#666; display:block; margin-top:6px;">Ctrl/⌘ для мультивыбора</small>
-                        </div>
-                        <div class="form-group">
-                            <label>Режим прогноза:</label>
-                            <div style="display:flex; flex-wrap: wrap; gap: 10px; padding-top: 6px;">
-                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="no_growth" checked> Без роста</label>
-                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="preset_pct"> Предустановленные %</label>
-                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="auto_trend"> Авто‑тренд</label>
-                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="manual_pct"> Ручной %</label>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Рост (3/6/12м), %:</label>
-                            <div style="display:flex; gap: 10px;">
-                                <input type="number" id="forecastGrowth3" value="15" style="width: 90px;" min="-100" step="1">
-                                <input type="number" id="forecastGrowth6" value="25" style="width: 90px;" min="-100" step="1">
-                                <input type="number" id="forecastGrowth12" value="35" style="width: 90px;" min="-100" step="1">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>&nbsp;</label>
-                            <div style="display:flex; gap: 10px; flex-wrap: wrap;">
-                                <button class="btn btn-primary" onclick="recalculateForecast()">Пересчитать</button>
-                                <button class="btn btn-success" onclick="exportForecastToExcel()">📊 Экспорт в Excel</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="forecastMetaHint" style="margin-top:10px; font-size:12px; color:#666;"></div>
-                </div>
-
-                <div class="stats-container" id="forecastKpiCards"></div>
-
-                <div class="chart-container">
-                    <div class="chart-title">Общая динамика (факт + прогноз)</div>
-                    <div id="forecastTotalsChart"></div>
-                </div>
-
-                <div class="chart-container">
-                    <div class="chart-title">Топ‑10 товаров по весу (кг) — помесячно</div>
-                    <div id="forecastTop10Chart"></div>
-                    <div id="forecastTop10Table" style="margin-top: 14px;"></div>
-                </div>
-
-                <div class="chart-container">
-                    <div class="chart-title">Таблица прогноза по SKU</div>
-                    <div id="forecastSkuTable"></div>
-                </div>
-
-                <div class="chart-container">
-                    <div class="chart-title">Агрегация по товару (упаковки вместе)</div>
-                    <div id="forecastFamilyTable"></div>
-                </div>
-            </div>
-            
             <div class="stats-container">
                 <div class="stat-card">
                     <div class="stat-number" id="totalRevenue">0 RSD</div>
@@ -4379,6 +4308,77 @@
                 </div>
             </div>
             </div> <!-- Конец statsContentSales -->
+            
+            <!-- Подвкладка: Прогноз потребления и выручки -->
+            <div id="statsContentForecast" style="display: none;">
+                <div class="filter-section">
+                    <h3>Прогноз потребления и выручки</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Период истории с:</label>
+                            <input type="date" id="forecastFromDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Период истории по:</label>
+                            <input type="date" id="forecastToDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Категории:</label>
+                            <select id="forecastCategories" multiple style="height: 44px; padding: 10px; border: 2px solid #e3e8ef; border-radius: 8px; background: white;">
+                            </select>
+                            <small style="color:#666; display:block; margin-top:6px;">Ctrl/⌘ для мультивыбора</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Режим прогноза:</label>
+                            <div style="display:flex; flex-wrap: wrap; gap: 10px; padding-top: 6px;">
+                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="no_growth" checked> Без роста</label>
+                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="preset_pct"> Предустановленные %</label>
+                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="auto_trend"> Авто‑тренд</label>
+                                <label style="display:flex; gap:8px; align-items:center;"><input type="radio" name="forecastMode" value="manual_pct"> Ручной %</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Рост (3/6/12м), %:</label>
+                            <div style="display:flex; gap: 10px;">
+                                <input type="number" id="forecastGrowth3" value="15" style="width: 90px;" min="-100" step="1">
+                                <input type="number" id="forecastGrowth6" value="25" style="width: 90px;" min="-100" step="1">
+                                <input type="number" id="forecastGrowth12" value="35" style="width: 90px;" min="-100" step="1">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>&nbsp;</label>
+                            <div style="display:flex; gap: 10px; flex-wrap: wrap;">
+                                <button class="btn btn-primary" onclick="recalculateForecast()">Пересчитать</button>
+                                <button class="btn btn-success" onclick="exportForecastToExcel()">📊 Экспорт в Excel</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="forecastMetaHint" style="margin-top:10px; font-size:12px; color:#666;"></div>
+                </div>
+
+                <div class="stats-container" id="forecastKpiCards"></div>
+
+                <div class="chart-container">
+                    <div class="chart-title">Общая динамика (факт + прогноз)</div>
+                    <div id="forecastTotalsChart"></div>
+                </div>
+
+                <div class="chart-container">
+                    <div class="chart-title">Топ‑10 товаров по весу (кг) — помесячно</div>
+                    <div id="forecastTop10Chart"></div>
+                    <div id="forecastTop10Table" style="margin-top: 14px;"></div>
+                </div>
+
+                <div class="chart-container">
+                    <div class="chart-title">Таблица прогноза по SKU</div>
+                    <div id="forecastSkuTable"></div>
+                </div>
+
+                <div class="chart-container">
+                    <div class="chart-title">Агрегация по товару (упаковки вместе)</div>
+                    <div id="forecastFamilyTable"></div>
+                </div>
+            </div>
             
             <!-- Подвкладка: Статистика расходников -->
             <div id="statsContentExpenses" style="display: none;">

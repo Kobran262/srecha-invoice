@@ -1,5 +1,6 @@
 mod database;
 mod commands;
+mod forecast_service;
 
 use tauri::Manager;
 use database::Database;
@@ -123,6 +124,7 @@ pub fn run() {
             commands::delete_supplier,
             // HTTP для синхронизации
             commands::http_request,
+            commands::get_forecast_report,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

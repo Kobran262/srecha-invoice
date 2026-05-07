@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::{State, Manager};
 use crate::database::Database;
+use crate::forecast_service::{ForecastReport, ForecastRequest, ForecastService};
 use rusqlite::params;
 use chrono::Utc;
 
@@ -111,6 +112,7 @@ pub struct InvoiceItem {
     pub product_id: String,
     pub product_name: String,
     pub quantity: f64,
+    pub unit_weight_g: Option<f64>,
     pub price: f64,
     pub total: f64,
 }
@@ -584,7 +586,7 @@ pub fn get_invoice_by_id(id: String, db: State<Database>) -> Result<Option<Invoi
     match invoice_result {
         Ok(invoice) => {
             let mut items_stmt = db.conn()
-                .prepare("SELECT id, invoice_id, product_id, product_name, quantity, price, total FROM invoice_items WHERE invoice_id = ?1")
+                .prepare("SELECT id, invoice_id, product_id, product_name, quantity, unit_weight_g, price, total FROM invoice_items WHERE invoice_id = ?1")
                 .map_err(|e| e.to_string())?;
             
             let items = items_stmt.query_map([&id], |row| {
@@ -594,8 +596,9 @@ pub fn get_invoice_by_id(id: String, db: State<Database>) -> Result<Option<Invoi
                     product_id: row.get(2)?,
                     product_name: row.get(3)?,
                     quantity: row.get(4)?,
-                    price: row.get(5)?,
-                    total: row.get(6)?,
+                    unit_weight_g: row.get(5)?,
+                    price: row.get(6)?,
+                    total: row.get(7)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -637,15 +640,29 @@ pub fn create_invoice(invoice: Invoice, items: Vec<InvoiceItem>, db: State<Datab
     
     for item in items {
         let item_id = uuid::Uuid::new_v4().to_string();
+
+        // unit_weight_g: сохраняем вес единицы товара в транзакции.
+        // Сначала пробуем взять актуальный вес из products по internal_code или code.
+        let unit_weight_g: Option<f64> = db
+            .conn()
+            .query_row(
+                "SELECT weight FROM products WHERE internal_code = ?1 OR code = ?1 LIMIT 1",
+                params![item.product_id],
+                |row| row.get(0),
+            )
+            .ok()
+            .flatten();
+
         db.conn().execute(
-            "INSERT INTO invoice_items (id, invoice_id, product_id, product_name, quantity, price, total) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO invoice_items (id, invoice_id, product_id, product_name, quantity, unit_weight_g, price, total) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 item_id,
                 id,
                 item.product_id,
                 item.product_name,
                 item.quantity,
+                unit_weight_g,
                 item.price,
                 item.total,
             ],
@@ -1157,6 +1174,13 @@ pub fn delete_invoice_html(
     }
 
     Ok(())
+}
+
+// ==================== ПРОГНОЗ: ПОТРЕБЛЕНИЕ И ВЫРУЧКА ====================
+
+#[tauri::command]
+pub fn get_forecast_report(req: ForecastRequest, db: State<Database>) -> Result<ForecastReport, String> {
+    ForecastService::generate(&db, req)
 }
 
 // ==================== КОМАНДЫ: КАТЕГОРИИ ====================

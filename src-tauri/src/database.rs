@@ -150,12 +150,18 @@ impl Database {
                 product_id TEXT NOT NULL,
                 product_name TEXT NOT NULL,
                 quantity REAL NOT NULL,
+                unit_weight_g REAL,
                 price REAL NOT NULL,
                 total REAL NOT NULL,
                 FOREIGN KEY (invoice_id) REFERENCES invoices(id)
             )",
             [],
         )?;
+
+        // Миграция: добавляем unit_weight_g в invoice_items если её нет
+        let _ = self
+            .conn
+            .execute("ALTER TABLE invoice_items ADD COLUMN unit_weight_g REAL", []);
         
         // 6. Таблица доставок
         self.conn.execute(

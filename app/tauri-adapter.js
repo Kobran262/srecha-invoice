@@ -288,6 +288,21 @@ window.api = {
             }
         },
     },
+
+    // ==================== FORECAST ====================
+    forecast: {
+        getReport: async (req) => {
+            try {
+                console.log('📡 Forecast: get_report', req);
+                const report = await invoke('get_forecast_report', { req });
+                console.log('✅ Forecast report loaded');
+                return report;
+            } catch (error) {
+                console.error('❌ Forecast: get_report failed:', error);
+                throw new Error(`Не удалось построить прогноз: ${error}`);
+            }
+        }
+    },
     
     // ==================== WAREHOUSE GROUPS ====================
     warehouseGroups: {

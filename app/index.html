@@ -115,38 +115,43 @@
         .forecast-compact .table th { padding: 10px 8px; font-size: 12px; }
         .forecast-compact .table td { padding: 9px 8px; font-size: 12px; }
         .forecast-compact input, .forecast-compact select { padding: 10px 12px; border-radius: 10px; }
-        /* Режим прогноза: всегда в рамках (grid) */
-        .forecast-compact .forecast-mode-options {
-            display:grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap:10px;
-            padding-top:6px;
-            align-items:stretch;
-        }
         .forecast-compact .forecast-mode-pill {
-            display:flex; align-items:center; gap:8px;
-            padding:8px 10px; border-radius: 12px;
-            background:#ffffff; border:2px solid #e2e8f0;
-            color:#334155; cursor:pointer; user-select:none;
-            font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.2px;
-            line-height:1.1;
-            justify-content:flex-start;
-            text-align:left;
-            width:100%;
-            min-width:0;
-            white-space:normal;
-            word-break:break-word;
+            /* как в создании клиента (рассрочка/витрина/бар) */
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            color: #334155;
+            user-select: none;
         }
-        .forecast-compact .forecast-mode-pill input { margin:0; }
-        .forecast-compact .forecast-mode-pill .forecast-mode-text { display:inline; min-width:0; }
+        .forecast-compact .forecast-mode-pill input {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            margin: 0;
+            flex: 0 0 auto;
+        }
+        .forecast-compact .forecast-mode-pill .forecast-mode-text {
+            font-weight: 500;
+            text-transform: none;
+            letter-spacing: 0;
+            font-size: 13px;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
         .forecast-compact .forecast-mode-pill:hover { border-color:#114A9F; }
-        .forecast-compact .forecast-mode-pill.is-checked { border-color:#114A9F; box-shadow:0 0 0 4px rgba(17,74,159,0.08); }
+        .forecast-compact .forecast-mode-pill.is-checked {
+            border-color:#114A9F;
+            box-shadow: 0 0 0 4px rgba(17,74,159,0.08);
+            background: #f0f6ff;
+        }
         @media (max-width: 900px) {
             .forecast-compact .chart-title { font-size: 15px; }
             .forecast-compact .stats-container { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
-        }
-        @media (max-width: 520px) {
-            .forecast-compact .forecast-mode-options { grid-template-columns: 1fr; }
         }
         .invoice-list { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; border: 2px solid #e9ecef; }
         .invoice-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #e9ecef; transition: background 0.3s ease; }
@@ -4367,14 +4372,15 @@
                             <input type="date" id="forecastToDate">
                         </div>
                         <div class="form-group">
-                            <label>Категории:</label>
-                            <select id="forecastCategories" multiple style="height: 44px; padding: 10px; border: 2px solid #e3e8ef; border-radius: 8px; background: white;">
+                            <label>Категория:</label>
+                            <select id="forecastCategory" style="height: 44px; padding: 10px; border: 2px solid #e3e8ef; border-radius: 8px; background: white;">
+                                <option value="">Все категории</option>
                             </select>
-                            <small style="color:#666; display:block; margin-top:6px;">Ctrl/⌘ для мультивыбора</small>
                         </div>
                         <div class="form-group">
                             <label>Режим прогноза:</label>
-                            <div class="forecast-mode-options">
+                            <!-- как чекбоксы в создании клиента: инпут + текст рядом -->
+                            <div style="display:flex; flex-wrap:wrap; gap: 12px; padding-top: 6px;">
                                 <label class="forecast-mode-pill" data-forecast-mode-pill>
                                     <input type="radio" name="forecastMode" value="preset_pct">
                                     <span class="forecast-mode-text">ПРЕДУСТАНОВЛЕННЫЕ %</span>
@@ -18223,7 +18229,7 @@ ${lineXml}
         }
 
         function populateForecastCategories() {
-            const select = document.getElementById('forecastCategories');
+            const select = document.getElementById('forecastCategory');
             if (!select) return;
 
             // products может быть как глобальная переменная, так и window.products
@@ -18234,7 +18240,7 @@ ${lineXml}
             });
             const sorted = Array.from(cats).sort((a, b) => a.localeCompare(b, 'ru'));
 
-            select.innerHTML = '';
+            select.innerHTML = '<option value="">Все категории</option>';
             sorted.forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c;
@@ -18250,13 +18256,13 @@ ${lineXml}
             try {
                 const from = document.getElementById('forecastFromDate')?.value || null;
                 const to = document.getElementById('forecastToDate')?.value || null;
-                const categories = getMultiSelectValues(document.getElementById('forecastCategories'));
+                const category = document.getElementById('forecastCategory')?.value || '';
                 const mode = getSelectedForecastMode();
 
                 const req = {
                     start_date: from,
                     end_date: to,
-                    categories: categories.length ? categories : null,
+                    categories: category ? [category] : null,
                     horizons: [3, 6, 12],
                     mode,
                     growth_pct_3: parseFloat(document.getElementById('forecastGrowth3')?.value || '15'),
@@ -18647,17 +18653,47 @@ ${lineXml}
             window.__forecastTopSku = skuDefault;
 
             const win = Number(window.__forecastTopWindow || 24); // 0 = all
-            const months = (win && t.months.length > win) ? t.months.slice(-win) : t.months.slice();
-            const idxOffset = t.months.length - months.length;
             const sel = series.find(s => s.sku_code === window.__forecastTopSku) || series[0];
-            const values = (sel?.points_kg || []).slice(idxOffset);
+
+            // ---- build fact + forecast points similar to "Общая динамика"
+            const meta = report.meta || {};
+            const monthsCount = Number(meta.months_count || t.months.length || 1);
+            const max_h = 12;
+            const endMonth = String(meta.end_month || (t.months[t.months.length - 1] || ''));
+            const futureMonths = nextMonthsJs(endMonth, max_h);
+
+            const skuRow = (report.sku_table || []).find(r => r.sku_code === window.__forecastTopSku);
+            const growthW = Number(meta.effective_growth_weight?.[max_h] ?? 0);
+            const growthR = Number(meta.effective_growth_revenue?.[max_h] ?? 0);
+            const avgW = Number(skuRow?.avg_weight_kg_per_month ?? 0);
+            const avgU = skuRow ? (Number(skuRow.sum_units || 0) / monthsCount) : 0;
+            const avgR = skuRow ? (Number(skuRow.sum_revenue_rsd || 0) / monthsCount) : 0;
+            const forecastW = avgW * (1.0 + growthW);
+            const forecastU = avgU * (1.0 + growthW);
+            const forecastR = avgR * (1.0 + growthR);
+
+            const metric = window.__forecastTopMetric || 'weight'; // weight | units | revenue
+            const metricLabel = metric === 'units' ? 'Единицы' : metric === 'revenue' ? 'Выручка' : 'Вес (кг)';
+
+            const factMonthsAll = t.months.slice();
+            const factValuesAll = (sel?.points_kg || []).slice(); // weight only fact
+            const ptsAll = [];
+            for (let i = 0; i < factMonthsAll.length; i++) {
+                ptsAll.push({ month: factMonthsAll[i], kind: 'actual', weight: factValuesAll[i] || 0, units: 0, revenue: 0 });
+            }
+            // forecast tail: constant monthly for selected metric (based on SKU avg + growth)
+            for (let i = 0; i < futureMonths.length; i++) {
+                ptsAll.push({ month: futureMonths[i], kind: 'forecast', weight: forecastW, units: forecastU, revenue: forecastR });
+            }
+            const pts = (win && ptsAll.length > win) ? ptsAll.slice(-win) : ptsAll;
+            const values = pts.map(p => metric === 'units' ? p.units : metric === 'revenue' ? p.revenue : p.weight);
             const maxV = Math.max(...values, 1e-9);
             const w = 960, h = 220, pad = 24;
             const xStep = (w - pad * 2) / Math.max(values.length - 1, 1);
             const y = (v) => (h - pad) - (v / maxV) * (h - pad * 2);
             const poly = values.map((v, i) => `${pad + i * xStep},${y(v)}`).join(' ');
 
-            const monthLabels = months.map(m => String(m || '').slice(0, 7));
+            const monthLabels = pts.map(p => String(p.month || '').slice(0, 7));
             const showEvery = monthLabels.length <= 14 ? 1 : monthLabels.length <= 24 ? 2 : 3;
             const yTicks = [
                 { v: maxV, label: fmt(maxV) },
@@ -18678,6 +18714,9 @@ ${lineXml}
                 return `<text x="${xx}" y="${h - 6}" text-anchor="middle" font-size="10" fill="#64748b">${escapeHtml(m)}</text>`;
             }).join('');
 
+            const firstForecastIdx = pts.findIndex(p => p.kind === 'forecast');
+            const dividerX = firstForecastIdx > 0 ? (pad + firstForecastIdx * xStep) : null;
+
             chartEl.innerHTML = `
                 <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap; margin-bottom:10px;">
                     <div class="form-group" style="margin:0; min-width:280px; flex:1;">
@@ -18692,8 +18731,14 @@ ${lineXml}
                         <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTopWindow(24)">24м</button>
                         <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTopWindow(0)">Все</button>
                     </div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <span style="font-size:12px; color:#666;">Метрика:</span>
+                        <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTopMetric('weight')">Вес</button>
+                        <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTopMetric('units')">Единицы</button>
+                        <button class="btn btn-secondary" style="padding:6px 10px;" onclick="setForecastTopMetric('revenue')">Выручка</button>
+                    </div>
                 </div>
-                <div style="font-size:12px; color:#666; margin-bottom:6px;">Динамика веса (кг) по выбранному SKU за период.</div>
+                <div style="font-size:12px; color:#666; margin-bottom:6px;">${metricLabel} по выбранному SKU. Пунктир — граница факт/прогноз.</div>
                 <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" style="background:#fff; border:1px solid #e9ecef; border-radius:10px;">
                     ${gridLines}
                     <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="#cbd5e1" stroke-width="1" />
@@ -18701,6 +18746,7 @@ ${lineXml}
                     ${yLabels}
                     ${xLabels}
                     <polyline fill="none" stroke="#dc2626" stroke-width="3" points="${poly}" />
+                    ${dividerX ? `<line x1="${dividerX}" y1="${pad}" x2="${dividerX}" y2="${h-pad}" stroke="#666" stroke-dasharray="6,6" />` : ''}
                 </svg>
             `;
 
@@ -18736,6 +18782,27 @@ ${lineXml}
         function setForecastTopWindow(n) {
             window.__forecastTopWindow = Number(n || 0);
             if (__forecastReport) renderForecastTop10(__forecastReport);
+        }
+
+        function setForecastTopMetric(metric) {
+            window.__forecastTopMetric = String(metric || 'weight');
+            if (__forecastReport) renderForecastTop10(__forecastReport);
+        }
+
+        function nextMonthsJs(endMonthYYYYMM, count) {
+            // endMonth like "2026-04" or "2026-04-01"
+            const s = String(endMonthYYYYMM || '').slice(0, 7);
+            const [yy, mm] = s.split('-').map(x => parseInt(x, 10));
+            if (!yy || !mm) return [];
+            const out = [];
+            const d = new Date(yy, mm - 1, 1);
+            for (let i = 0; i < count; i++) {
+                d.setMonth(d.getMonth() + 1);
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                out.push(`${y}-${m}`);
+            }
+            return out;
         }
 
         function renderForecastSkuTable(report) {

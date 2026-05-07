@@ -25581,6 +25581,10 @@ ${lineXml}
                 showAlert('Сначала настройте подключение к SQLite Cloud', 'warning');
                 return;
             }
+
+            // Политика доступа:
+            // Администратор НЕ скачивает из облака (только выгрузка), чтобы не затирать локальные данные.
+            const isAdmin = !!(window.currentUser && (window.currentUser.isAdmin || window.currentUser.username === 'BrankoFND'));
             
             // Закрываем модальное окно настроек
             closeSyncModal();
@@ -25593,11 +25597,13 @@ ${lineXml}
             const progressDetail = document.getElementById('syncProgressDetail');
             
             try {
-                const result = await window.SyncService.fullSync((percent, text) => {
-                    progressBar.style.width = percent + '%';
-                    progressText.textContent = text;
-                    progressDetail.textContent = `${percent}% завершено`;
-                });
+                const result = isAdmin
+                    ? (await window.SyncService.quickUpload(), { success: true, message: 'Выгрузка в облако выполнена (без скачивания)' })
+                    : await window.SyncService.fullSync((percent, text) => {
+                        progressBar.style.width = percent + '%';
+                        progressText.textContent = text;
+                        progressDetail.textContent = `${percent}% завершено`;
+                    });
                 
                 // Закрываем окно прогресса через 1 секунду
                 setTimeout(() => {

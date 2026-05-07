@@ -2394,10 +2394,25 @@ const SyncService = {
             // ШАГ 1: Выгружаем локальные статусы на сервер
             const confirmedPredracuns = JSON.parse(localStorage.getItem('confirmedPredracuns') || '[]');
             const confirmedRacuns = JSON.parse(localStorage.getItem('confirmedRacuns') || '[]');
+            let localInvoices = [];
+            try {
+                if (window.api?.invoices?.getAll) {
+                    localInvoices = await window.api.invoices.getAll();
+                }
+            } catch (e) {
+                console.log('⚠️ Не удалось получить инвойсы из SQLite для синхронизации статусов:', e);
+            }
             
             const allDocs = [
                 ...confirmedPredracuns.map(d => ({...d, _docType: 'predracun'})),
-                ...confirmedRacuns.map(d => ({...d, _docType: 'racun'}))
+                ...confirmedRacuns.map(d => ({...d, _docType: 'racun'})),
+                // инвойсы из SQLite (paid/delivered живут тут)
+                ...localInvoices.map(inv => ({
+                    _docType: 'invoice',
+                    number: inv.invoice_number || inv.invoiceNumber || inv.number,
+                    paid: inv.paid === true,
+                    delivered: inv.delivered === true
+                }))
             ];
             
             let uploaded = 0;
@@ -2477,6 +2492,26 @@ const SyncService = {
                 } else if (docType === 'racun') {
                     storageKey = 'confirmedRacuns';
                     docArray = JSON.parse(localStorage.getItem(storageKey) || '[]');
+                } else if (docType === 'invoice') {
+                    // Инвойсы: применяем напрямую в SQLite, никогда не сбрасываем true → false
+                    try {
+                        if (window.api?.invoices?.getAll && window.api?.invoices?.updatePaymentStatus) {
+                            const invs = await window.api.invoices.getAll();
+                            const inv = invs.find(x => (x.invoice_number || x.invoiceNumber || x.number) === docNumber);
+                            if (inv) {
+                                const nextPaid = (inv.paid === true) || serverPaid;
+                                const nextDelivered = (inv.delivered === true) || serverDelivered;
+                                if (nextPaid !== (inv.paid === true) || nextDelivered !== (inv.delivered === true)) {
+                                    await window.api.invoices.updatePaymentStatus(docNumber, nextPaid, nextDelivered);
+                                    applied++;
+                                    console.log(`   📥 invoice #${docNumber}: paid=${nextPaid}, delivered=${nextDelivered} (OR merge)`);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.log(`⚠️ Не удалось применить статусы invoice #${docNumber}:`, e);
+                    }
+                    continue;
                 } else {
                     continue;
                 }
@@ -2779,12 +2814,17 @@ const SyncService = {
                 if (existingMap.has(docNumber)) {
                     // Документ существует - обновляем только статусы paid/delivered если они изменились
                     const existingDoc = existingMap.get(docNumber);
-                    const needsUpdate = (doc.paid !== existingDoc.paid) || (doc.delivered !== existingDoc.delivered);
+                    const hasPaid = typeof doc.paid === 'boolean';
+                    const hasDelivered = typeof doc.delivered === 'boolean';
+                    // Если поле не пришло с сервера/истории — НЕ считаем это обновлением (иначе можно затереть true → false)
+                    const nextPaid = hasPaid ? doc.paid : existingDoc.paid;
+                    const nextDelivered = hasDelivered ? doc.delivered : existingDoc.delivered;
+                    const needsUpdate = (hasPaid && nextPaid !== existingDoc.paid) || (hasDelivered && nextDelivered !== existingDoc.delivered);
                     
                     if (needsUpdate && window.api.invoices.updatePaymentStatus) {
                         try {
-                            await window.api.invoices.updatePaymentStatus(docNumber, doc.paid || false, doc.delivered || false);
-                            console.log(`🔄 Обновлены статусы ${docNumber}: paid=${doc.paid}, delivered=${doc.delivered}`);
+                            await window.api.invoices.updatePaymentStatus(docNumber, nextPaid === true, nextDelivered === true);
+                            console.log(`🔄 Обновлены статусы ${docNumber}: paid=${nextPaid}, delivered=${nextDelivered}`);
                         } catch (e) {
                             console.log(`⚠️ Не удалось обновить статусы для ${docNumber}:`, e);
                         }
@@ -3229,6 +3269,8 @@ const SyncService = {
             await this.uploadProducts();
             await this.uploadWarehouseGroups();
             await this.uploadInvoices();
+            // ВАЖНО: статусы paid/delivered
+            await this.syncInvoiceStatuses();
             await this.uploadLocalStorage();
             
             this.lastSync = new Date();

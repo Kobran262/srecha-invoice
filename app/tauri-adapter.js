@@ -303,6 +303,22 @@ window.api = {
             }
         }
     },
+
+    // ==================== EXCHANGE RATES (NBS) ====================
+    exchangeRates: {
+        fetchNbsRate: async (dateIso, currency) => {
+            try {
+                const req = { date: String(dateIso), currency: String(currency) };
+                console.log('📡 NBS: fetch_rate', req);
+                const rate = await invoke('fetch_nbs_rate', { req });
+                console.log('✅ NBS rate loaded:', rate);
+                return rate;
+            } catch (error) {
+                console.error('❌ NBS: fetch_rate failed:', error);
+                throw new Error(`Не удалось получить курс НБС: ${error}`);
+            }
+        }
+    },
     
     // ==================== WAREHOUSE GROUPS ====================
     warehouseGroups: {

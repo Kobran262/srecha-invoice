@@ -133,7 +133,10 @@ impl Database {
                 notes TEXT,
                 created_at TEXT NOT NULL,
                 paid INTEGER DEFAULT 0,
-                delivered INTEGER DEFAULT 0
+                delivered INTEGER DEFAULT 0,
+                currency TEXT DEFAULT 'RSD',
+                exchange_rate REAL,
+                exchange_rate_date TEXT
             )",
             [],
         )?;
@@ -141,6 +144,22 @@ impl Database {
         // Миграция: добавляем колонки paid и delivered если их нет
         let _ = self.conn.execute("ALTER TABLE invoices ADD COLUMN paid INTEGER DEFAULT 0", []);
         let _ = self.conn.execute("ALTER TABLE invoices ADD COLUMN delivered INTEGER DEFAULT 0", []);
+        // Миграция: мультивалютность
+        let _ = self.conn.execute("ALTER TABLE invoices ADD COLUMN currency TEXT DEFAULT 'RSD'", []);
+        let _ = self.conn.execute("ALTER TABLE invoices ADD COLUMN exchange_rate REAL", []);
+        let _ = self.conn.execute("ALTER TABLE invoices ADD COLUMN exchange_rate_date TEXT", []);
+
+        // Кэш курсов НБС (date,currency -> rate)
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS nbs_rates (
+                date TEXT NOT NULL,
+                currency TEXT NOT NULL,
+                rate REAL NOT NULL,
+                fetched_at TEXT NOT NULL,
+                PRIMARY KEY (date, currency)
+            )",
+            [],
+        )?;
         
         // 5. Таблица позиций инвойса
         self.conn.execute(

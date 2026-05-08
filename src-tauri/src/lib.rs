@@ -124,6 +124,8 @@ pub fn run() {
             commands::delete_supplier,
             // HTTP для синхронизации
             commands::http_request,
+            // НБС курс (для мультивалютности)
+            commands::fetch_nbs_rate,
             commands::get_forecast_report,
         ])
         .run(tauri::generate_context!())

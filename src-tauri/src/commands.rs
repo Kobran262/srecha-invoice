@@ -4,6 +4,13 @@ use crate::database::Database;
 use crate::forecast_service::{ForecastReport, ForecastRequest, ForecastService};
 use rusqlite::params;
 use chrono::Utc;
+use reqwest;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NbsRateRequest {
+    pub date: String,     // "YYYY-MM-DD"
+    pub currency: String, // "EUR"
+}
 
 // ==================== СТРУКТУРЫ ====================
 
@@ -102,6 +109,9 @@ pub struct Invoice {
     pub created_at: Option<String>,
     pub paid: Option<bool>,
     pub delivered: Option<bool>,
+    pub currency: Option<String>,
+    pub exchange_rate: Option<f64>,
+    pub exchange_rate_date: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -122,6 +132,106 @@ pub struct InvoiceWithItems {
     #[serde(flatten)]
     pub invoice: Invoice,
     pub items: Vec<InvoiceItem>,
+}
+
+fn iso_to_ddmmyyyy(iso: &str) -> Option<String> {
+    // "2026-05-08" -> "08.05.2026"
+    let s = iso.trim();
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 3 { return None; }
+    let y = parts[0];
+    let m = parts[1];
+    let d = parts[2];
+    if y.len() != 4 || m.len() != 2 || d.len() != 2 { return None; }
+    Some(format!("{}.{}.{}", d, m, y))
+}
+
+fn parse_serbian_decimal(s: &str) -> Option<f64> {
+    let t = s.trim().replace('\u{a0}', "").replace(' ', "").replace('.', "").replace(',', ".");
+    t.parse::<f64>().ok()
+}
+
+fn extract_td_texts_from_row(html: &str, start_idx: usize, max_tds: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut idx = start_idx;
+    for _ in 0..max_tds {
+        if let Some(td_pos) = html[idx..].find("<td") {
+            let td_start = idx + td_pos;
+            if let Some(gt_pos) = html[td_start..].find('>') {
+                let content_start = td_start + gt_pos + 1;
+                if let Some(end_pos) = html[content_start..].find("</td>") {
+                    let raw = &html[content_start..content_start + end_pos];
+                    let text = raw
+                        .replace("&nbsp;", " ")
+                        .replace("&amp;", "&")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">")
+                        .replace("&quot;", "\"")
+                        .replace("&#39;", "'");
+                    out.push(text.trim().to_string());
+                    idx = content_start + end_pos + 5;
+                    continue;
+                }
+            }
+        }
+        break;
+    }
+    out
+}
+
+async fn fetch_rate_from_nbs(date_ddmmyyyy: &str, currency: &str) -> Result<f64, String> {
+    // Public webappcenter page, date param works.
+    let url = format!(
+        "https://webappcenter.nbs.rs/ExchangeRateWebApp/ExchangeRate/IndexByDate?date={}",
+        urlencoding::encode(date_ddmmyyyy)
+    );
+    let body = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("NBS request failed: {}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("NBS read body failed: {}", e))?;
+
+    let needle = format!(">{}<", currency.trim().to_uppercase());
+    let pos = body.find(&needle).ok_or_else(|| "Currency not found in NBS table".to_string())?;
+    // We are inside a <td>CUR</td>. Extract next td texts: code, country, unit, buy, sell
+    let tds = extract_td_texts_from_row(&body, pos, 6);
+    if tds.len() < 6 {
+        return Err("Failed to parse NBS row".to_string());
+    }
+    // tds[0] = CUR, [3]=unit, [4]=buy, [5]=sell on current page layout
+    let unit = parse_serbian_decimal(&tds[3]).ok_or_else(|| "Bad unit".to_string())?;
+    let buy = parse_serbian_decimal(&tds[4]).ok_or_else(|| "Bad buy rate".to_string())?;
+    let sell = parse_serbian_decimal(&tds[5]).ok_or_else(|| "Bad sell rate".to_string())?;
+    let mid = (buy + sell) / 2.0;
+    Ok(mid / unit.max(1.0))
+}
+
+#[tauri::command]
+pub async fn fetch_nbs_rate(req: NbsRateRequest, db: State<'_, Database>) -> Result<f64, String> {
+    let iso = req.date.trim().to_string();
+    let currency = req.currency.trim().to_uppercase();
+    if currency == "RSD" {
+        return Ok(1.0);
+    }
+    let ddmmyyyy = iso_to_ddmmyyyy(&iso).ok_or_else(|| "Invalid date format (expected YYYY-MM-DD)".to_string())?;
+
+    // cache lookup
+    if let Ok(mut stmt) = db.conn().prepare("SELECT rate FROM nbs_rates WHERE date = ?1 AND currency = ?2") {
+        let cached: Result<f64, _> = stmt.query_row(params![ddmmyyyy, currency], |row| row.get(0));
+        if let Ok(rate) = cached {
+            return Ok(rate);
+        }
+    }
+
+    let rate = fetch_rate_from_nbs(&ddmmyyyy, &currency).await?;
+    let fetched_at = Utc::now().to_rfc3339();
+    let _ = db.conn().execute(
+        "INSERT INTO nbs_rates (date, currency, rate, fetched_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(date, currency) DO UPDATE SET rate = excluded.rate, fetched_at = excluded.fetched_at",
+        params![ddmmyyyy, currency, rate, fetched_at],
+    );
+    Ok(rate)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -508,7 +618,7 @@ pub fn get_invoices(db: State<Database>) -> Result<Vec<Invoice>, String> {
     println!("🔍 get_invoices: Starting to fetch invoices...");
     
     let mut stmt = db.conn()
-        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered FROM invoices ORDER BY created_at DESC")
+        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered, currency, exchange_rate, exchange_rate_date FROM invoices ORDER BY created_at DESC")
         .map_err(|e| {
             println!("❌ get_invoices: Failed to prepare statement: {}", e);
             e.to_string()
@@ -533,6 +643,9 @@ pub fn get_invoices(db: State<Database>) -> Result<Vec<Invoice>, String> {
             created_at: Some(row.get(10)?),
             paid: paid_int.map(|v| v != 0),
             delivered: delivered_int.map(|v| v != 0),
+            currency: row.get(13).ok(),
+            exchange_rate: row.get(14).ok(),
+            exchange_rate_date: row.get(15).ok(),
         })
     })
     .map_err(|e| {
@@ -559,7 +672,7 @@ pub fn get_invoices(db: State<Database>) -> Result<Vec<Invoice>, String> {
 #[tauri::command]
 pub fn get_invoice_by_id(id: String, db: State<Database>) -> Result<Option<InvoiceWithItems>, String> {
     let mut stmt = db.conn()
-        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered FROM invoices WHERE id = ?1")
+        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered, currency, exchange_rate, exchange_rate_date FROM invoices WHERE id = ?1")
         .map_err(|e| e.to_string())?;
     
     let invoice_result = stmt.query_row([&id], |row| {
@@ -580,6 +693,9 @@ pub fn get_invoice_by_id(id: String, db: State<Database>) -> Result<Option<Invoi
             created_at: Some(row.get(10)?),
             paid: paid_int.map(|v| v != 0),
             delivered: delivered_int.map(|v| v != 0),
+            currency: row.get(13).ok(),
+            exchange_rate: row.get(14).ok(),
+            exchange_rate_date: row.get(15).ok(),
         })
     });
     
@@ -618,8 +734,8 @@ pub fn create_invoice(invoice: Invoice, items: Vec<InvoiceItem>, db: State<Datab
     let created_at = Utc::now().to_rfc3339();
     
     db.conn().execute(
-        "INSERT INTO invoices (id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO invoices (id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered, currency, exchange_rate, exchange_rate_date) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         params![
             id,
             invoice.invoice_number,
@@ -634,6 +750,9 @@ pub fn create_invoice(invoice: Invoice, items: Vec<InvoiceItem>, db: State<Datab
             created_at,
             invoice.paid.unwrap_or(false),
             invoice.delivered.unwrap_or(false),
+            invoice.currency.unwrap_or_else(|| "RSD".to_string()),
+            invoice.exchange_rate,
+            invoice.exchange_rate_date,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -686,7 +805,7 @@ pub fn update_invoice(id: String, invoice: Invoice, db: State<Database>) -> Resu
     println!("🔄 update_invoice: Updating invoice {}", id);
     
     db.conn().execute(
-        "UPDATE invoices SET invoice_number = ?1, document_type = ?2, client_id = ?3, client_name = ?4, date = ?5, due_date = ?6, total = ?7, status = ?8, notes = ?9, paid = ?10, delivered = ?11 WHERE id = ?12",
+        "UPDATE invoices SET invoice_number = ?1, document_type = ?2, client_id = ?3, client_name = ?4, date = ?5, due_date = ?6, total = ?7, status = ?8, notes = ?9, paid = ?10, delivered = ?11, currency = ?12, exchange_rate = ?13, exchange_rate_date = ?14 WHERE id = ?15",
         params![
             invoice.invoice_number,
             invoice.document_type,
@@ -699,6 +818,9 @@ pub fn update_invoice(id: String, invoice: Invoice, db: State<Database>) -> Resu
             invoice.notes,
             invoice.paid.unwrap_or(false),
             invoice.delivered.unwrap_or(false),
+            invoice.currency.clone().unwrap_or_else(|| "RSD".to_string()),
+            invoice.exchange_rate,
+            invoice.exchange_rate_date.clone(),
             id,
         ],
     )
@@ -722,6 +844,9 @@ pub fn update_invoice(id: String, invoice: Invoice, db: State<Database>) -> Resu
         created_at: invoice.created_at,
         paid: invoice.paid,
         delivered: invoice.delivered,
+        currency: invoice.currency,
+        exchange_rate: invoice.exchange_rate,
+        exchange_rate_date: invoice.exchange_rate_date,
     })
 }
 
@@ -752,7 +877,7 @@ pub fn delete_invoice(id: String, db: State<Database>) -> Result<(), String> {
 #[tauri::command]
 pub fn get_client_history(client_id: String, db: State<Database>) -> Result<Vec<Invoice>, String> {
     let mut stmt = db.conn()
-        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered FROM invoices WHERE client_id = ?1 ORDER BY created_at DESC")
+        .prepare("SELECT id, invoice_number, document_type, client_id, client_name, date, due_date, total, status, notes, created_at, paid, delivered, currency, exchange_rate, exchange_rate_date FROM invoices WHERE client_id = ?1 ORDER BY created_at DESC")
         .map_err(|e| e.to_string())?;
     
     let invoices = stmt.query_map([&client_id], |row| {
@@ -773,6 +898,9 @@ pub fn get_client_history(client_id: String, db: State<Database>) -> Result<Vec<
             created_at: Some(row.get(10)?),
             paid: paid_int.map(|v| v != 0),
             delivered: delivered_int.map(|v| v != 0),
+            currency: row.get(13).ok(),
+            exchange_rate: row.get(14).ok(),
+            exchange_rate_date: row.get(15).ok(),
         })
     })
     .map_err(|e| e.to_string())?

@@ -2148,6 +2148,7 @@
         </div>
 
         <div class="nav-tabs">
+            <button class="nav-tab" onclick="showTab('dashboard')">Дашборд</button>
             <button class="nav-tab active" onclick="showTab('clients')">Клиенты</button>
             <button class="nav-tab" onclick="showTab('products')">Товары</button>
             <button class="nav-tab" onclick="showTab('warehouse')">Склад</button>
@@ -2155,6 +2156,23 @@
             <button class="nav-tab" onclick="showTab('orders')">Заказы</button>
             <button class="nav-tab" onclick="showTab('expenses')">Расходы</button>
             <button class="nav-tab" onclick="showTab('statistics')">Статистика</button>
+        </div>
+
+        <!-- Дашборд -->
+        <div id="dashboard" class="tab-content" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+                <h2 style="margin:0;">Дашборд</h2>
+                <button class="btn btn-secondary" onclick="loadDashboard()" style="margin:0;">🔄 Обновить</button>
+            </div>
+            <div class="stats-container" id="dashboardKpi"></div>
+            <div class="chart-container">
+                <div class="chart-title">Неоплаченные счета (возраст долга)</div>
+                <div id="dashboardUnpaid"></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">Топ‑5 клиентов (месяц)</div>
+                <div id="dashboardTopClients"></div>
+            </div>
         </div>
 
         <!-- Клиенты -->
@@ -2987,12 +3005,25 @@
                         <input type="text" id="invoiceNumber" placeholder="1-DDMMYYYY">
                     </div>
                     <div class="form-group">
+                        <label>Валюта</label>
+                        <select id="invoiceCurrency" onchange="onInvoiceCurrencyChange()">
+                            <option value="RSD" selected>RSD</option>
+                            <option value="EUR">EUR</option>
+                        </select>
+                        <small style="color:#666; display:block; margin-top:6px;">Для B2B/UBL. По умолчанию RSD.</small>
+                    </div>
+                    <div class="form-group">
                         <label>Дата *</label>
                         <input type="date" id="invoiceDate">
                     </div>
                     <div class="form-group">
                         <label>Срок оплаты *</label>
                         <input type="date" id="invoiceDueDate">
+                    </div>
+                    <div class="form-group">
+                        <label>Курс (НБС)</label>
+                        <input type="number" id="invoiceExchangeRate" step="0.0001" placeholder="—" oninput="onInvoiceExchangeRateManual()">
+                        <small id="invoiceExchangeRateHint" style="color:#666; display:block; margin-top:6px;">Авто для EUR по дате документа.</small>
                     </div>
                     <div class="form-group">
                         <label>Клиент *</label>
@@ -8580,31 +8611,185 @@
             document.getElementById('invoiceDueDate').value = nextWeekStr;
             document.getElementById('deliveryDate').value = today;
             document.getElementById('deliveryDueDate').value = nextWeekStr;
+
+            // обновим курс при старте
+            setTimeout(() => onInvoiceCurrencyChange(), 50);
         }
 
+        // Подхватываем ручное редактирование номера инвойса, чтобы следующий номер был корректным
+        (function attachInvoiceNumberAutoListeners() {
+            try {
+                const input = document.getElementById('invoiceNumber');
+                if (!input) return;
+                input.addEventListener('blur', () => {
+                    const v = String(input.value || '').trim();
+                    if (v) acceptInvoiceNumberIfHigher(v);
+                });
+            } catch (_) {}
+        })();
+
+        async function onInvoiceCurrencyChange() {
+            try {
+                const cur = document.getElementById('invoiceCurrency')?.value || 'RSD';
+                const dateIso = document.getElementById('invoiceDate')?.value || new Date().toISOString().slice(0, 10);
+                const rateEl = document.getElementById('invoiceExchangeRate');
+                const hintEl = document.getElementById('invoiceExchangeRateHint');
+                if (!rateEl) return;
+
+                if (cur === 'RSD') {
+                    rateEl.value = '';
+                    rateEl.disabled = true;
+                    if (hintEl) hintEl.textContent = 'Для RSD курс не нужен.';
+                    return;
+                }
+
+                rateEl.disabled = false;
+                if (hintEl) hintEl.textContent = '⏳ Получаю курс НБС...';
+                const rate = await window.api?.exchangeRates?.fetchNbsRate(dateIso, cur);
+                if (typeof rate === 'number' && Number.isFinite(rate)) {
+                    rateEl.value = String(rate);
+                    if (hintEl) hintEl.textContent = `НБС: ${cur}/RSD на ${dateIso} (с кешем)`;
+                } else {
+                    if (hintEl) hintEl.textContent = 'Не удалось получить курс НБС. Введите вручную.';
+                }
+            } catch (e) {
+                console.log('onInvoiceCurrencyChange failed:', e);
+                const hintEl = document.getElementById('invoiceExchangeRateHint');
+                if (hintEl) hintEl.textContent = 'Не удалось получить курс НБС. Введите вручную.';
+            }
+        }
+
+        function onInvoiceExchangeRateManual() {
+            const hintEl = document.getElementById('invoiceExchangeRateHint');
+            if (hintEl) hintEl.textContent = 'Курс задан вручную.';
+        }
+
+        // ==================== AUTO INVOICE NUMBERING (номер/год) ====================
+        // Settings keys (localStorage; синхронизируется через SQLite Cloud localStorage sync)
+        const INVOICE_NUM_TEMPLATE_KEY = 'invoice_number_template';     // e.g. "{N}/{YEAR}" or "R/{N}/{YEAR}"
+        const INVOICE_NUM_CURRENT_KEY = 'invoice_number_current';       // integer as string
+        const INVOICE_NUM_YEAR_KEY = 'invoice_number_year';             // "2026"
+
+        function getInvoiceNumberSettings() {
+            const nowY = String(new Date().getFullYear());
+            const template = localStorage.getItem(INVOICE_NUM_TEMPLATE_KEY) || '{N}/{YEAR}';
+            const year = localStorage.getItem(INVOICE_NUM_YEAR_KEY) || nowY;
+            let current = parseInt(localStorage.getItem(INVOICE_NUM_CURRENT_KEY) || '0', 10);
+            if (!Number.isFinite(current) || current < 0) current = 0;
+            // годовой ресет
+            if (year !== nowY) {
+                localStorage.setItem(INVOICE_NUM_YEAR_KEY, nowY);
+                localStorage.setItem(INVOICE_NUM_CURRENT_KEY, '0');
+                return { template, year: nowY, current: 0 };
+            }
+            return { template, year, current };
+        }
+
+        function setInvoiceNumberSettings(nextCurrent, year = String(new Date().getFullYear())) {
+            localStorage.setItem(INVOICE_NUM_YEAR_KEY, String(year));
+            localStorage.setItem(INVOICE_NUM_CURRENT_KEY, String(Math.max(0, parseInt(String(nextCurrent || 0), 10) || 0)));
+        }
+
+        function applyInvoiceTemplate(template, n, year) {
+            return String(template || '{N}/{YEAR}')
+                .replace(/\{N\}/g, String(n))
+                .replace(/\{YEAR\}/g, String(year));
+        }
+
+        function parseInvoiceNumberNYear(s) {
+            // ожидаем формат: "...<N>/<YEAR>" (например "42/2026" или "R/42/2026")
+            const str = String(s || '').trim();
+            const m = str.match(/(?:^|\/)(\d+)\s*\/\s*(20\d{2})\s*$/);
+            if (!m) return null;
+            const n = parseInt(m[1], 10);
+            const year = m[2];
+            if (!Number.isFinite(n) || n <= 0) return null;
+            return { n, year };
+        }
+
+        function findMaxInvoiceNForYear(existingNumbers, year) {
+            let maxN = 0;
+            (existingNumbers || []).forEach(x => {
+                const p = parseInvoiceNumberNYear(x);
+                if (p && p.year === String(year)) {
+                    if (p.n > maxN) maxN = p.n;
+                }
+            });
+            return maxN;
+        }
+
+        function getExistingInvoiceNumbersAll() {
+            const a = (window.confirmedInvoices || confirmedInvoices || []).map(inv => inv?.number || inv?.invoiceNumber || inv?.invoice_number).filter(Boolean);
+            // из SQLite (если доступно) тоже
+            const b = [];
+            try {
+                const cached = window.__sqliteInvoicesCache || null;
+                if (Array.isArray(cached)) {
+                    cached.forEach(inv => {
+                        const num = inv?.invoice_number || inv?.invoiceNumber || inv?.number;
+                        if (num) b.push(num);
+                    });
+                }
+            } catch (_) {}
+            return Array.from(new Set([...a, ...b].map(String)));
+        }
+
+        async function refreshSqliteInvoicesCache() {
+            try {
+                if (window.api?.invoices?.getAll) {
+                    window.__sqliteInvoicesCache = await window.api.invoices.getAll();
+                }
+            } catch (_) {}
+        }
+
+        async function suggestNextInvoiceNumber() {
+            await refreshSqliteInvoicesCache();
+            const s = getInvoiceNumberSettings();
+            const existing = getExistingInvoiceNumbersAll();
+            const maxExisting = findMaxInvoiceNForYear(existing, s.year);
+            const base = Math.max(s.current, maxExisting);
+            const nextN = base + 1;
+            return applyInvoiceTemplate(s.template, nextN, s.year);
+        }
+
+        function acceptInvoiceNumberIfHigher(invoiceNumber) {
+            const p = parseInvoiceNumberNYear(invoiceNumber);
+            if (!p) return;
+            const nowY = String(new Date().getFullYear());
+            if (p.year !== nowY) return;
+            const s = getInvoiceNumberSettings();
+            const nextCurrent = Math.max(s.current, p.n);
+            setInvoiceNumberSettings(nextCurrent, nowY);
+        }
+
+        // Старый генератор (нужен для отпремниц/доставок)
         function generateUniqueDocumentNumber(existingNumbers, prefix = '') {
             const today = new Date();
             const dateStr = `${String(today.getDate()).padStart(2, '0')}${String(today.getMonth() + 1).padStart(2, '0')}${today.getFullYear()}`;
-            
+
             let counter = 1;
             let number = `${counter}-${dateStr}`;
-            if (prefix) {
-                number = `${prefix}-${counter}-${dateStr}`;
-            }
-            
-            while (existingNumbers.includes(number)) {
+            if (prefix) number = `${prefix}-${counter}-${dateStr}`;
+
+            while ((existingNumbers || []).includes(number)) {
                 counter++;
                 number = prefix ? `${prefix}-${counter}-${dateStr}` : `${counter}-${dateStr}`;
             }
-            
             return number;
         }
 
         function generateDocumentNumbers() {
             // Генерируем уникальные номера для инвойсов
-            const existingInvoiceNumbers = confirmedInvoices.map(inv => inv.number);
-            const invoiceNumber = generateUniqueDocumentNumber(existingInvoiceNumbers);
-            document.getElementById('invoiceNumber').value = invoiceNumber;
+            (async () => {
+                const input = document.getElementById('invoiceNumber');
+                if (!input) return;
+                // если пользователь уже что-то ввёл — не затираем
+                const currentVal = String(input.value || '').trim();
+                if (!currentVal) {
+                    const invoiceNumber = await suggestNextInvoiceNumber();
+                    input.value = invoiceNumber;
+                }
+            })();
             
             // Генерируем уникальные номера для отпремниц
             const existingDeliveryNumbers = confirmedDeliveries.map(del => del.number);
@@ -15566,6 +15751,9 @@
             }
             const invoiceDate = document.getElementById('invoiceDate').value;
             const invoiceDueDate = document.getElementById('invoiceDueDate').value;
+            const currency = document.getElementById('invoiceCurrency')?.value || 'RSD';
+            const exchangeRateRaw = document.getElementById('invoiceExchangeRate')?.value || '';
+            const exchangeRate = parseFloat(exchangeRateRaw);
             const clientIndex = document.getElementById('invoiceClient').value;
             const delivery = document.getElementById('invoiceDelivery').value;
             const vatRate = document.getElementById('invoiceVAT').value;
@@ -15669,6 +15857,9 @@
                 number: invoiceNumber,
                 date: invoiceDate,
                 dueDate: invoiceDueDate,
+                currency: currency,
+                exchangeRate: Number.isFinite(exchangeRate) ? exchangeRate : null,
+                exchangeRateDate: (currency === 'EUR') ? (invoiceDate || new Date().toISOString().slice(0, 10)) : null,
                 client: client,
                 items: items,
                 delivery: delivery,
@@ -15865,6 +16056,13 @@
             
             // ВАЖНО: Обновляем тип документа в currentInvoiceData
             currentInvoiceData.documentType = documentType;
+
+            // Авто-нумерация: если пользователь ввёл номер вручную, подхватываем его как "текущий"
+            try {
+                acceptInvoiceNumberIfHigher(currentInvoiceData.number);
+            } catch (e) {
+                console.log('⚠️ acceptInvoiceNumberIfHigher failed:', e);
+            }
             
             // Проверяем, не утвержден ли уже этот документ
             let targetArray, storageKey, documentName;
@@ -15986,7 +16184,10 @@
                     clientName: newDocument.client?.name || newDocument.clientName || '',
                     total: newDocument.total || 0,
                     status: 'confirmed',
-                    notes: newDocument.notes || ''
+                    notes: newDocument.notes || '',
+                    currency: newDocument.currency || 'RSD',
+                    exchangeRate: newDocument.exchangeRate || null,
+                    exchangeRateDate: newDocument.exchangeRateDate || null
                 };
                 
                 const items = newDocument.items.map(item => ({
@@ -16631,7 +16832,9 @@
             };
 
             const client = invoice?.client || {};
-            const currency = 'RSD';
+            const currency = String(invoice?.currency || 'RSD').toUpperCase();
+            const exRate = (currency === 'EUR') ? Number(invoice?.exchangeRate || invoice?.exchange_rate || 0) : 0;
+            const exDate = String(invoice?.exchangeRateDate || invoice?.exchange_rate_date || issueDate || '').trim();
             const vatRate = Number(invoice?.vatRate || 0);
 
             // eFaktura expects EN16931 profile used in RS (seen in their own generated UBL)
@@ -16686,6 +16889,9 @@
             const vatCategoryId = vatRate > 0 ? 'S' : 'Z';
             const vatPercentStr = vatRate > 0 ? vatRate.toFixed(2) : '0';
 
+            const exchangeNote = (currency === 'EUR' && exRate > 0 && exDate)
+                ? `<cbc:Note>Exchange rate (NBS) ${currency}/RSD=${exRate} on ${xmlEscape(exDate)}</cbc:Note>`
+                : '';
             const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
          xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
@@ -16694,6 +16900,7 @@
   <cbc:ID>${xmlEscape(invoice?.number || '')}</cbc:ID>
   <cbc:IssueDate>${xmlEscape(issueDate || '')}</cbc:IssueDate>
   <cbc:DueDate>${xmlEscape(dueDate || '')}</cbc:DueDate>
+  ${exchangeNote}
   <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
   <cbc:DocumentCurrencyCode>${currency}</cbc:DocumentCurrencyCode>
 
@@ -21909,6 +22116,12 @@ ${lineXml}
                 showStatus('🎨 Инициализируем интерфейс...', '#3b82f6');
                 // Инициализируем интерфейс
                 initializeUserInterface();
+                try {
+                    showTab('dashboard');
+                    setTimeout(() => loadDashboard(), 50);
+                } catch (e) {
+                    console.log('Dashboard init failed:', e);
+                }
                 addLog(`Пользователь "${username}" вошёл в систему`);
                 showStatus('✅ Авторизация завершена успешно!', '#00ff00');
                 
@@ -25687,6 +25900,122 @@ ${lineXml}
             }
             
             console.log('✅ Данные перезагружены');
+        }
+
+        // ==================== DASHBOARD ====================
+        async function loadDashboard() {
+            const kpiEl = document.getElementById('dashboardKpi');
+            const unpaidEl = document.getElementById('dashboardUnpaid');
+            const topEl = document.getElementById('dashboardTopClients');
+            if (!kpiEl || !unpaidEl || !topEl) return;
+
+            kpiEl.innerHTML = '';
+            unpaidEl.innerHTML = '<div style="padding:20px; color:#666;">Загрузка…</div>';
+            topEl.innerHTML = '<div style="padding:20px; color:#666;">Загрузка…</div>';
+
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = now.getMonth(); // 0..11
+            const monthStart = new Date(y, m, 1);
+            const quarterStart = new Date(y, Math.floor(m / 3) * 3, 1);
+            const iso = (d) => d.toISOString().slice(0, 10);
+
+            let invs = [];
+            try {
+                invs = (await window.api?.invoices?.getAll?.()) || [];
+            } catch (_) {}
+
+            const parseIso = (s) => {
+                const d = new Date(String(s || '').slice(0, 10));
+                return isNaN(d.getTime()) ? null : d;
+            };
+            const inRange = (d, from) => d && d.getTime() >= from.getTime();
+
+            const monthInvs = invs.filter(i => inRange(parseIso(i.date), monthStart));
+            const quarterInvs = invs.filter(i => inRange(parseIso(i.date), quarterStart));
+
+            const sumTotal = (arr) => arr.reduce((s, i) => s + (Number(i.total) || 0), 0);
+
+            const turnoverMonth = sumTotal(monthInvs);
+            const turnoverQuarter = sumTotal(quarterInvs);
+
+            // Unpaid: paid != true
+            const unpaid = invs
+                .filter(i => !(i.paid === true))
+                .map(i => {
+                    const due = parseIso(i.due_date || i.dueDate);
+                    const ageDays = due ? Math.floor((now.getTime() - due.getTime()) / 86400000) : null;
+                    return {
+                        num: i.invoice_number || i.invoiceNumber || i.number || '',
+                        client: i.client_name || i.clientName || '',
+                        total: Number(i.total) || 0,
+                        due: due ? iso(due) : '',
+                        age: ageDays
+                    };
+                })
+                .sort((a, b) => (b.age || 0) - (a.age || 0));
+
+            // Top 5 clients (month) by turnover
+            const byClient = new Map();
+            monthInvs.forEach(i => {
+                const k = String(i.client_name || i.clientName || '—');
+                byClient.set(k, (byClient.get(k) || 0) + (Number(i.total) || 0));
+            });
+            const top5 = Array.from(byClient.entries())
+                .map(([client, total]) => ({ client, total }))
+                .sort((a, b) => b.total - a.total)
+                .slice(0, 5);
+
+            // PDV payable: используем локальные подтвержденные рачуны (там есть vatAmount)
+            const racuns = JSON.parse(localStorage.getItem('confirmedRacuns') || '[]');
+            const monthRacuns = racuns.filter(r => inRange(parseIso(r.date), monthStart));
+            const pdvMonth = monthRacuns.reduce((s, r) => s + (Number(r.vatAmount) || 0), 0);
+
+            kpiEl.innerHTML = [
+                { title: 'Оборот (месяц)', main: formatPriceWithCurrency(turnoverMonth), sub: `${iso(monthStart)} → ${iso(now)}` },
+                { title: 'Оборот (квартал)', main: formatPriceWithCurrency(turnoverQuarter), sub: `${iso(quarterStart)} → ${iso(now)}` },
+                { title: 'Неоплаченные', main: String(unpaid.length), sub: 'по SQLite (paid=false)' },
+                { title: 'ПДВ к уплате (месяц)', main: formatPriceWithCurrency(pdvMonth), sub: 'по подтвержденным računs' },
+            ].map(c => `
+                <div class="stat-card">
+                    <div class="stat-number">${c.main}</div>
+                    <div class="stat-label">${c.title}</div>
+                    <div style="margin-top:6px; font-size:12px; color:rgba(255,255,255,0.92);">${c.sub}</div>
+                </div>
+            `).join('');
+
+            // Unpaid table
+            if (!unpaid.length) {
+                unpaidEl.innerHTML = '<div style="padding:20px; color:#666;">Нет неоплаченных</div>';
+            } else {
+                const head = `<th>#</th><th>Номер</th><th>Клиент</th><th style="text-align:right;">Сумма</th><th>Срок</th><th style="text-align:right;">Возраст (дн.)</th>`;
+                const body = unpaid.slice(0, 50).map((u, idx) => `
+                    <tr>
+                        <td style="text-align:right;">${idx + 1}</td>
+                        <td>${escapeHtml(u.num)}</td>
+                        <td>${escapeHtml(u.client)}</td>
+                        <td style="text-align:right; font-variant-numeric: tabular-nums;">${formatPriceWithCurrency(u.total)}</td>
+                        <td>${escapeHtml(u.due)}</td>
+                        <td style="text-align:right; font-variant-numeric: tabular-nums; color:${(u.age != null && u.age > 0) ? '#dc2626' : '#64748b'};">${u.age == null ? '—' : u.age}</td>
+                    </tr>
+                `).join('');
+                unpaidEl.innerHTML = `<div style="overflow:auto;"><table class="table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+            }
+
+            // Top clients table
+            if (!top5.length) {
+                topEl.innerHTML = '<div style="padding:20px; color:#666;">Нет данных за месяц</div>';
+            } else {
+                const head = `<th>#</th><th>Клиент</th><th style="text-align:right;">Оборот</th>`;
+                const body = top5.map((t, idx) => `
+                    <tr>
+                        <td style="text-align:right;">${idx + 1}</td>
+                        <td>${escapeHtml(t.client)}</td>
+                        <td style="text-align:right; font-variant-numeric: tabular-nums;">${formatPriceWithCurrency(t.total)}</td>
+                    </tr>
+                `).join('');
+                topEl.innerHTML = `<div style="overflow:auto;"><table class="table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+            }
         }
         
         // ============== СИСТЕМА ИСТОРИИ ИЗМЕНЕНИЙ ==============
